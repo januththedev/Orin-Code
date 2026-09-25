@@ -179,7 +179,7 @@ export function AiPanel({ root, project }: { root: string | null; project: Proje
   }
 
   const answerApproval = async (approvalId: string, approved: boolean) => {
-    await bridge.approvalRespond(approvalId, approved).catch(() => {})
+    await bridge.approvalRespond(approvalId, approved, runIdRef.current ?? undefined).catch(() => {})
     const resolved = approved ? 'accepted' : 'rejected'
     setApprovals((prev) => prev.map((card) => (card.id === approvalId ? { ...card, resolved } : card)))
     setDiffs((prev) =>

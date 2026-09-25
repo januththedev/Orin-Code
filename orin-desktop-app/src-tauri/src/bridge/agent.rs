@@ -27,11 +27,10 @@ pub struct AgentTask {
     pub workspace_root: Option<String>,
     #[serde(rename = "projectInstructions", default)]
     pub project_instructions: Option<String>,
-    /// Phone-confirmed remote tasks only: the user already tapped Run on
-    /// Telegram, so approvals auto-resolve (still emitted + logged).
-    /// NEVER set for local runs — the UI never offers it.
-    #[serde(default, rename = "autoApprove")]
-    pub auto_approve: bool,
+    #[serde(rename = "phoneTaskId", default)]
+    pub phone_task_id: Option<String>,
+    #[serde(rename = "phoneGrant", default)]
+    pub phone_grant: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -159,9 +158,12 @@ struct Trajectory {
 }
 
 impl Trajectory {
-    fn new(root: &Option<String>, run_id: &str) -> Self {
-        let path = root.as_ref().and_then(|r| {
-            let dir = std::path::Path::new(r).join(".orin-trajectory");
+    fn new(workspace: Option<&super::workspace::Workspace>, run_id: &str) -> Self {
+        let path = workspace.and_then(|workspace| {
+            let dir = workspace.resolve_for_write(".orin-trajectory").ok()?;
+            if dir.exists() && !dir.is_dir() {
+                return None;
+            }
             std::fs::create_dir_all(&dir).ok()?;
             Some(dir.join(format!("{run_id}.jsonl")))
         });
@@ -225,13 +227,28 @@ fn apply_str_replace(content: &str, old_str: &str, new_str: &str) -> Result<Stri
 }
 
 #[tauri::command]
-pub async fn agent_run(task: AgentTask, app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+pub async fn agent_run(mut task: AgentTask, app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
     if task.instructions.trim().is_empty() {
         return Err("Give me something to work on first — describe what you need.".into());
+    }
+    if let Some(requested_root) = task.workspace_root.as_deref() {
+        let workspace = state.active_workspace()?;
+        let resolved = workspace.resolve_existing(requested_root)?;
+        if resolved != workspace.root() {
+            return Err("Agent workspace must be the active workspace root.".into());
+        }
+        task.workspace_root = Some(workspace.root().to_string_lossy().into_owned());
+    }
+    if let Some(grant) = task.phone_grant.as_deref() {
+        let task_id = task.phone_task_id.as_deref().ok_or("Phone task grant is missing its task id.")?;
+        task.workspace_root.as_deref().ok_or("Phone tasks require an active workspace.")?;
+        let secret = super::telegram::device_secret().ok_or("This PC is not enrolled for signed phone approvals.")?;
+        super::telegram::verify_grant(grant, task_id, &task.instructions, &super::telegram::machine_id(state.inner()), &secret)?;
     }
     let run_id = uuid::Uuid::new_v4().to_string();
     let flag = state.register_flag(&run_id);
     let approvals = state.approvals.clone();
+    let pending_approvals = state.pending_approvals.clone();
     let openai_base = super::store::read_setting(&state, "openai_compat/baseUrl");
 
     tauri::async_runtime::spawn(run_loop(
@@ -240,6 +257,7 @@ pub async fn agent_run(task: AgentTask, app: AppHandle, state: State<'_, AppStat
         task,
         flag,
         approvals,
+        pending_approvals,
         openai_base,
     ));
     Ok(run_id)
@@ -251,10 +269,34 @@ pub fn agent_stop(run_id: String, state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-pub fn approval_respond(approval_id: String, approved: bool, state: State<'_, AppState>) {
-    if let Ok(mut approvals) = state.approvals.lock() {
-        approvals.insert(approval_id, approved);
+pub fn approval_respond(approval_id: String, approved: bool, run_id: Option<String>, state: State<'_, AppState>) -> Result<(), String> {
+    let pending = state
+        .pending_approvals
+        .lock()
+        .map_err(|_| "approval registry poisoned".to_string())?;
+    let entry = pending.get(&approval_id).ok_or("Approval request is no longer active.")?;
+    if let Some(expected_run_id) = run_id.as_deref() {
+        if entry.run_id != expected_run_id {
+            return Err("Approval request belongs to another run.".into());
+        }
     }
+    if entry.expires_at_ms <= approval_now_ms() {
+        drop(pending);
+        if let Ok(mut pending) = state.pending_approvals.lock() {
+            pending.remove(&approval_id);
+        }
+        return Err("Approval request expired.".into());
+    }
+    drop(pending);
+    let mut decisions = state
+        .approvals
+        .lock()
+        .map_err(|_| "approval registry poisoned".to_string())?;
+    if decisions.contains_key(&approval_id) {
+        return Err("Approval request was already answered.".into());
+    }
+    decisions.insert(approval_id, approved);
+    Ok(())
 }
 
 async fn run_loop(
@@ -263,24 +305,26 @@ async fn run_loop(
     task: AgentTask,
     flag: Arc<AtomicBool>,
     approvals: Arc<Mutex<HashMap<String, bool>>>,
+    pending_approvals: Arc<Mutex<HashMap<String, super::PendingApproval>>>,
     openai_base: Option<String>,
 ) {
     let emit = |event: serde_json::Value| {
         let _ = app.emit("agent-event", json!({ "runId": run_id, "event": event }));
     };
 
-    let root = task
-        .workspace_root
-        .clone()
-        .map(|r| r.trim().trim_matches(['/', '\\']).to_string())
-        .filter(|r| !r.is_empty());
+    let root = task.workspace_root.clone();
+    let workspace = root
+        .as_deref()
+        .map(super::workspace::Workspace::from_path)
+        .transpose()
+        .unwrap_or(None);
 
     let mut messages: Vec<AiMessage> =
         serde_json::from_value(task.history.clone()).unwrap_or_default();
     messages.push(text_message("user", &task.instructions));
 
     // Harness record + read-before-edit tracking for this run.
-    let mut trajectory = Trajectory::new(&root, &run_id);
+    let mut trajectory = Trajectory::new(workspace.as_ref(), &run_id);
     trajectory.log(
         "run_start",
         json!({ "model": task.model_id, "mode": task.mode, "instructions": task.instructions }),
@@ -292,9 +336,6 @@ async fn run_loop(
         let state = app.state::<super::AppState>();
         super::telegram::mirror_for_run(state.inner()).await
     };
-    // Phone-confirmed remote tasks arrive pre-approved (the user tapped Run
-    // for this exact task). Local runs always ask.
-    let auto_approve = task.auto_approve;
 
     // Desktop control is a real-machine capability (GDI capture + SendInput).
     let desktop_enabled = cfg!(windows);
@@ -398,6 +439,13 @@ async fn run_loop(
                 emit(json!({ "kind": "done", "summary": "Stopped." }));
                 return;
             }
+            if task.mode == "plan" && !is_plan_safe_tool(&call.name) {
+                results.push_str(&format!(
+                    "<tool_result tool=\"{}\">ERROR: plan mode is read-only; no changes or computer-control actions are allowed.</tool_result>\n",
+                    xml_escape(&call.name)
+                ));
+                continue;
+            }
             if !is_supported_tool(&call.name, root.is_some(), desktop_enabled) {
                 results.push_str(&format!(
                     "<tool_result tool=\"{}\">ERROR: unknown or unavailable tool.</tool_result>\n",
@@ -417,8 +465,8 @@ async fn run_loop(
             emit(json!({ "kind": "step", "index": step_index, "status": "running", "label": label_for(&call.name, &target) }));
 
             let (ok, summary, feedback, frame) = execute_tool(
-                &app, &emit, &root, &call, &approvals, &flag, &mut policy, &mut desktop,
-                &mut read_set, &mut mirror, auto_approve,
+                &app, &emit, &root, &run_id, &pending_approvals, &call, &approvals, &flag, &mut policy, &mut desktop,
+                &mut read_set, &mut mirror,
             )
             .await;
             if let Some((jpeg_b64, width, height)) = frame {
@@ -495,6 +543,10 @@ async fn run_loop(
 // ---------------------------------------------------------------------------
 // Tool execution
 // ---------------------------------------------------------------------------
+
+fn is_plan_safe_tool(name: &str) -> bool {
+    matches!(name, "read_file" | "list_dir" | "search_files" | "screenshot" | "mcp_list_tools")
+}
 
 fn is_supported_tool(name: &str, tools_enabled: bool, desktop_enabled: bool) -> bool {
     if desktop_enabled && is_desktop_tool(name) {
@@ -596,6 +648,8 @@ async fn execute_tool<E: Fn(serde_json::Value) + Send + Sync>(
     app: &AppHandle,
     emit: &E,
     root: &Option<String>,
+    run_id: &str,
+    pending_approvals: &Arc<Mutex<HashMap<String, super::PendingApproval>>>,
     call: &ToolCall,
     approvals: &Arc<Mutex<HashMap<String, bool>>>,
     flag: &Arc<AtomicBool>,
@@ -603,11 +657,10 @@ async fn execute_tool<E: Fn(serde_json::Value) + Send + Sync>(
     desktop: &mut Option<super::cu::AnyController>,
     read_set: &mut HashSet<String>,
     mirror: &mut Option<super::telegram::PhoneMirror>,
-    auto_approve: bool,
 ) -> ToolOutcome {
     // --- Desktop control tools --------------------------------------------
     if is_desktop_tool(call.name.as_str()) {
-        return execute_desktop_tool(app, emit, call, approvals, flag, policy, desktop, mirror, auto_approve).await;
+        return execute_desktop_tool(app, emit, run_id, pending_approvals, call, approvals, flag, policy, desktop, mirror).await;
     }
 
     // Workspace tools need an open folder.
@@ -622,7 +675,7 @@ async fn execute_tool<E: Fn(serde_json::Value) + Send + Sync>(
     };
     let (ok, summary, feedback) = {
         let state = app.state::<super::AppState>();
-        execute_workspace_tool(emit, &root, call, approvals, flag, read_set, state.inner(), mirror, auto_approve).await
+        execute_workspace_tool(emit, &root, run_id, pending_approvals, call, approvals, flag, read_set, state.inner(), mirror).await
     };
     (ok, summary, feedback, None)
 }
@@ -630,15 +683,20 @@ async fn execute_tool<E: Fn(serde_json::Value) + Send + Sync>(
 async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
     emit: &E,
     root: &str,
+    run_id: &str,
+    pending_approvals: &Arc<Mutex<HashMap<String, super::PendingApproval>>>,
     call: &ToolCall,
     approvals: &Arc<Mutex<HashMap<String, bool>>>,
     flag: &Arc<AtomicBool>,
     read_set: &mut HashSet<String>,
     mcp_state: &super::AppState,
     mirror: &mut Option<super::telegram::PhoneMirror>,
-    auto_approve: bool,
 ) -> (bool, String, String) {
-    let root_path = std::path::Path::new(root);
+    let workspace = match super::workspace::Workspace::from_path(root) {
+        Ok(workspace) => workspace,
+        Err(error) => return (false, "Invalid workspace".into(), format!("ERROR: {error}")),
+    };
+    let root_path = workspace.root();
 
     match call.name.as_str() {
         "read_file" => {
@@ -646,7 +704,10 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             if path.trim().is_empty() {
                 return (false, "Missing path".into(), "ERROR: read_file needs a path.".into());
             }
-            let full = resolve(root_path, &path);
+            let full = match workspace.resolve_existing(&path) {
+                Ok(path) => path,
+                Err(error) => return (false, "Path blocked".into(), format!("ERROR: {error}")),
+            };
             match tokio::fs::read_to_string(&full).await {
                 Ok(content) => {
                     // Read-before-edit policy: surgical edits require a fresh
@@ -670,10 +731,17 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
 
         "list_dir" => {
             let raw = input_str(&call.input, "path").unwrap_or_else(|| ".".into());
-            let dir = if raw.trim().is_empty() || raw == "." { root_path.to_path_buf() } else { resolve(root_path, &raw) };
+            let dir = if raw.trim().is_empty() || raw == "." {
+                root_path.to_path_buf()
+            } else {
+                match workspace.resolve_existing(&raw) {
+                    Ok(path) => path,
+                    Err(error) => return (false, "Path blocked".into(), format!("ERROR: {error}")),
+                }
+            };
             let mut lines = Vec::new();
             let mut budget = 400usize;
-            list_lines(&dir, 0, 2, "", &mut budget, &mut lines);
+            list_lines(&workspace, &dir, 0, 2, "", &mut budget, &mut lines);
             if lines.is_empty() {
                 (false, "Directory not found or empty".into(), format!("ERROR: could not list \"{}\".", raw))
             } else {
@@ -688,9 +756,10 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             if query.trim().is_empty() {
                 return (false, "Missing query".into(), "ERROR: search_files needs a query.".into());
             }
-            let root_clone = root.to_string();
+            let workspace_for_search = workspace.clone();
+            let root_for_search = root_path.to_path_buf();
             let needle = query.trim().to_lowercase();
-            let hits = tauri::async_runtime::spawn_blocking(move || search_sync(&root_clone, &needle, 50, 1500))
+            let hits = tauri::async_runtime::spawn_blocking(move || search_sync(&workspace_for_search, &root_for_search, &needle, 50, 1500))
                 .await
                 .unwrap_or_default();
             if hits.is_empty() {
@@ -711,7 +780,10 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             if old_str.is_empty() {
                 return (false, "Missing old_str".into(), "ERROR: str_replace needs old_str (the exact block to replace) and new_str.".into());
             }
-            let full = resolve(root_path, &path);
+            let full = match workspace.resolve_existing(&path) {
+                Ok(path) => path,
+                Err(error) => return (false, "Path blocked".into(), format!("ERROR: {error}")),
+            };
             if !read_set.contains(&display_key(&full)) {
                 return (
                     false,
@@ -747,12 +819,11 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             }));
 
             let decision = request_approval(
-                emit, approvals, flag, mirror, &approval_id,
+                emit, approvals, flag, mirror, pending_approvals, run_id, &approval_id,
                 "str_replace",
                 format!("Edit {}", file_name_of(&path)),
                 format!("Orin wants to apply a surgical edit to {path} (+{plus} −{minus})."),
                 false,
-                auto_approve,
             )
             .await;
             match decision {
@@ -786,7 +857,10 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             if path.trim().is_empty() {
                 return (false, "Missing path".into(), "ERROR: write_file needs a path.".into());
             }
-            let full = resolve(root_path, &path);
+            let full = match workspace.resolve_for_write(&path) {
+                Ok(path) => path,
+                Err(error) => return (false, "Path blocked".into(), format!("ERROR: {error}")),
+            };
             let existed = full.exists();
             let old = tokio::fs::read_to_string(&full).await.unwrap_or_default();
 
@@ -806,12 +880,11 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             }));
 
             let decision = request_approval(
-                emit, approvals, flag, mirror, &approval_id,
+                emit, approvals, flag, mirror, pending_approvals, run_id, &approval_id,
                 "write_file",
                 if existed { format!("Modify {}", file_name_of(&path)) } else { format!("Create {}", file_name_of(&path)) },
                 format!("Orin wants to {} {}.", if existed { "modify" } else { "create" }, path),
                 false,
-                auto_approve,
             )
             .await;
             match decision {
@@ -864,13 +937,12 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
                     super::connectors::find(&service).map(|c| c.label).unwrap_or("service");
                 let approval_id = uuid::Uuid::new_v4().to_string();
                 match request_approval(
-                    emit, approvals, flag, mirror, &approval_id,
+                    emit, approvals, flag, mirror, pending_approvals, run_id, &approval_id,
                     "service_request",
                     format!("{connector_label} {} {}", method.to_uppercase(), path),
                     format!("Orin wants to call {connector_label} ({} {}) — credentials stay server-side.", method.to_uppercase(), path),
                     true,
-                    auto_approve,
-                )
+                    )
                 .await
                 {
                     Some(true) => {}
@@ -921,12 +993,11 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             // MCP tools act on the outside world (send mail, move files): always ask.
             let approval_id = uuid::Uuid::new_v4().to_string();
             match request_approval(
-                emit, approvals, flag, mirror, &approval_id,
+                emit, approvals, flag, mirror, pending_approvals, run_id, &approval_id,
                 "mcp_call",
                 format!("MCP {server} → {tool}"),
                 format!("Orin wants to call {tool} on {server}. Keys stay server-side."),
                 true,
-                auto_approve,
             )
             .await
             {
@@ -946,12 +1017,11 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
             }
             let approval_id = uuid::Uuid::new_v4().to_string();
             match request_approval(
-                emit, approvals, flag, mirror, &approval_id,
+                emit, approvals, flag, mirror, pending_approvals, run_id, &approval_id,
                 "run_command",
                 "Run shell command".into(),
                 command.chars().take(300).collect::<String>(),
                 true,
-                auto_approve,
             )
             .await
             {
@@ -966,7 +1036,6 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
                     #[cfg(windows)]
                     {
                         // CREATE_NO_WINDOW — keeps helper shells from flashing consoles.
-                        use std::os::windows::process::CommandExt as _;
                         cmd.creation_flags(0x0800_0000);
                     }
                     let spawned = cmd.output();
@@ -1021,13 +1090,14 @@ async fn execute_workspace_tool<E: Fn(serde_json::Value) + Send + Sync>(
 async fn execute_desktop_tool<E: Fn(serde_json::Value) + Send + Sync>(
     _app: &AppHandle,
     emit: &E,
+    run_id: &str,
+    pending_approvals: &Arc<Mutex<HashMap<String, super::PendingApproval>>>,
     call: &ToolCall,
     approvals: &Arc<Mutex<HashMap<String, bool>>>,
     flag: &Arc<AtomicBool>,
     policy: &mut super::cu::policy::SessionPolicy,
     desktop: &mut Option<super::cu::AnyController>,
     mirror: &mut Option<super::telegram::PhoneMirror>,
-    auto_approve: bool,
 ) -> ToolOutcome {
     #[cfg(not(windows))]
     {
@@ -1073,9 +1143,8 @@ async fn execute_desktop_tool<E: Fn(serde_json::Value) + Send + Sync>(
             if let Decision::Ask(need) = policy.decide(&action_kind, &gate_target) {
                 let approval_id = uuid::Uuid::new_v4().to_string();
                 match request_approval(
-                    emit, approvals, flag, mirror, &approval_id,
+                    emit, approvals, flag, mirror, pending_approvals, run_id, &approval_id,
                     &call.name, need.title, need.detail, need.destructive,
-                    auto_approve,
                 )
                 .await
                 {
@@ -1199,6 +1268,7 @@ fn capitalize(text: &str) -> String {
 /// remote decision is parked in the shared map like a local one.
 async fn wait_approval(
     approvals: &Arc<Mutex<HashMap<String, bool>>>,
+    pending_approvals: &Arc<Mutex<HashMap<String, super::PendingApproval>>>,
     id: &str,
     flag: &Arc<AtomicBool>,
     mirror: Option<&super::telegram::PhoneMirror>,
@@ -1208,26 +1278,44 @@ async fn wait_approval(
     loop {
         if let Ok(mut map) = approvals.lock() {
             if let Some(decision) = map.remove(id) {
+                if let Ok(mut pending) = pending_approvals.lock() {
+                    pending.remove(id);
+                }
                 return Some(decision);
             }
+        }
+        let pending_live = pending_approvals.lock().ok().and_then(|pending| {
+            pending.get(id).map(|entry| entry.expires_at_ms > approval_now_ms())
+        });
+        if pending_live != Some(true) {
+            return None;
         }
         if flag.load(Ordering::Relaxed) {
             return None;
         }
         if tokio::time::Instant::now() >= deadline {
+            if let Ok(mut pending) = pending_approvals.lock() {
+                pending.remove(id);
+            }
             return None;
         }
         ticks += 1;
-        // Phone check every ~3 s; foreign decisions are parked for their waits.
+        // Phone check every ~3 s. Only IDs registered by this core are parked;
+        // arbitrary or replayed phone responses are discarded.
         if ticks % 20 == 0 {
             if let Some(m) = mirror {
                 let batch = super::telegram::mirror_poll(m).await;
-                if let Some(approved) = super::telegram::mirror_match(&batch, id) {
-                    return Some(approved);
-                }
+                let now = approval_now_ms();
                 for (aid, approved) in batch {
-                    if let Ok(mut map) = approvals.lock() {
-                        map.insert(aid, approved);
+                    let known = pending_approvals
+                        .lock()
+                        .ok()
+                        .and_then(|pending| pending.get(&aid).map(|entry| entry.expires_at_ms > now))
+                        .unwrap_or(false);
+                    if known {
+                        if let Ok(mut map) = approvals.lock() {
+                            map.insert(aid, approved);
+                        }
                     }
                 }
             }
@@ -1236,25 +1324,41 @@ async fn wait_approval(
     }
 }
 
+fn approval_now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or(0)
+}
+
 /// One gate for every mutating tool: emit the approval-request event, mirror
 /// it to the linked phone (best-effort — a dead link disables mirroring for
-/// the rest of the run), then wait for either side to decide.
-///
-/// Phone-confirmed runs (`auto_approve`) resolve immediately: the user tapped
-/// Run on Telegram for THIS task, so each approval is pre-granted — still
-/// emitted to the UI and trajectory log for a full audit trail.
+/// the rest of the run), then wait for either side to decide. There is no
+/// renderer-controlled bypass; a remote task must answer each approval too.
 async fn request_approval<E: Fn(serde_json::Value) + Send + Sync>(
     emit: &E,
     approvals: &Arc<Mutex<HashMap<String, bool>>>,
     flag: &Arc<AtomicBool>,
     mirror: &mut Option<super::telegram::PhoneMirror>,
+    pending_approvals: &Arc<Mutex<HashMap<String, super::PendingApproval>>>,
+    run_id: &str,
     id: &str,
     tool: &str,
     title: String,
     detail: String,
     destructive: bool,
-    auto_approve: bool,
 ) -> Option<bool> {
+    if let Ok(mut pending) = pending_approvals.lock() {
+        pending.insert(
+            id.to_string(),
+            super::PendingApproval {
+                run_id: run_id.to_string(),
+                expires_at_ms: approval_now_ms() + APPROVAL_TIMEOUT_SECS * 1000,
+            },
+        );
+    } else {
+        return None;
+    }
     emit(json!({
         "kind": "approval-request",
         "approvalId": id,
@@ -1262,17 +1366,13 @@ async fn request_approval<E: Fn(serde_json::Value) + Send + Sync>(
         "title": title,
         "detail": detail,
         "destructive": destructive,
-        "auto": auto_approve,
     }));
-    if auto_approve {
-        return Some(true);
-    }
     if let Some(m) = mirror.as_ref() {
         if !super::telegram::mirror_push(m, id, tool, &title, &detail).await {
             *mirror = None;
         }
     }
-    wait_approval(approvals, id, flag, mirror.as_ref()).await
+    wait_approval(approvals, pending_approvals, id, flag, mirror.as_ref()).await
 }
 
 // ---------------------------------------------------------------------------
@@ -1375,15 +1475,6 @@ fn summarize(text: &str) -> String {
 // Small filesystem helpers (kept local so fs.rs stays untouched)
 // ---------------------------------------------------------------------------
 
-fn resolve(root: &std::path::Path, path: &str) -> std::path::PathBuf {
-    let candidate = std::path::Path::new(path);
-    if candidate.is_absolute() {
-        candidate.to_path_buf()
-    } else {
-        root.join(candidate)
-    }
-}
-
 fn ignored_dir(name: &str) -> bool {
     matches!(
         name,
@@ -1397,8 +1488,8 @@ const BINARY_EXT: &[&str] = &[
     "wasm", "pdb", "lib", "a", "class", "jar",
 ];
 
-fn list_lines(dir: &std::path::Path, depth: u32, max_depth: u32, indent: &str, budget: &mut usize, out: &mut Vec<String>) {
-    if depth > max_depth || *budget == 0 {
+fn list_lines(workspace: &super::workspace::Workspace, dir: &std::path::Path, depth: u32, max_depth: u32, indent: &str, budget: &mut usize, out: &mut Vec<String>) {
+    if depth > max_depth || *budget == 0 || !workspace.contains_existing(dir) {
         return;
     }
     let Ok(entries) = std::fs::read_dir(dir) else { return };
@@ -1409,45 +1500,53 @@ fn list_lines(dir: &std::path::Path, depth: u32, max_depth: u32, indent: &str, b
             out.push(format!("{indent}…"));
             return;
         }
+        let path = entry.path();
+        let Ok(resolved) = workspace.resolve_existing(path.to_str().unwrap_or_default()) else { continue };
+        let Ok(metadata) = std::fs::metadata(&resolved) else { continue };
         *budget -= 1;
         let name = entry.file_name().to_string_lossy().to_string();
-        let Ok(ft) = entry.file_type() else { continue };
-        if ft.is_dir() {
+        if metadata.is_dir() {
             if ignored_dir(&name) {
                 continue;
             }
             out.push(format!("{indent}{name}/"));
-            list_lines(&entry.path(), depth + 1, max_depth, &format!("{indent}  "), budget, out);
+            list_lines(workspace, &resolved, depth + 1, max_depth, &format!("{indent}  "), budget, out);
         } else {
-            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
-            out.push(format!("{indent}{name} ({})", human_len(size as usize)));
+            out.push(format!("{indent}{name} ({})", human_len(metadata.len() as usize)));
         }
     }
 }
 
-fn search_sync(root: &str, needle: &str, max_hits: usize, max_files: usize) -> Vec<String> {
+fn search_sync(workspace: &super::workspace::Workspace, root: &std::path::Path, needle: &str, max_hits: usize, max_files: usize) -> Vec<String> {
     let mut hits = Vec::new();
     let mut scanned = 0usize;
-    let mut stack = vec![std::path::PathBuf::from(root)];
+    let mut visited = std::collections::HashSet::new();
+    let mut stack = vec![root.to_path_buf()];
     while let Some(dir) = stack.pop() {
-        if hits.len() >= max_hits || scanned >= max_files {
+        if hits.len() >= max_hits || scanned >= max_files || !workspace.contains_existing(&dir) {
             break;
+        }
+        let dir_key = dir.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+        if !visited.insert(dir_key) {
+            continue;
         }
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
             let path = entry.path();
+            let Ok(resolved) = workspace.resolve_existing(path.to_str().unwrap_or_default()) else { continue };
             let name = entry.file_name().to_string_lossy().to_string();
-            if path.is_dir() {
+            let Ok(metadata) = std::fs::metadata(&resolved) else { continue };
+            if metadata.is_dir() {
                 if !ignored_dir(&name) {
-                    stack.push(path);
+                    stack.push(resolved);
                 }
                 continue;
             }
-            let ext = path.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
+            let ext = resolved.extension().and_then(|e| e.to_str()).map(|e| e.to_ascii_lowercase()).unwrap_or_default();
             if BINARY_EXT.contains(&ext.as_str()) {
                 continue;
             }
-            let Ok(content) = std::fs::read(&path) else { continue };
+            let Ok(content) = std::fs::read(&resolved) else { continue };
             if content.len() > 1024 * 1024 {
                 continue;
             }
@@ -1455,7 +1554,7 @@ fn search_sync(root: &str, needle: &str, max_hits: usize, max_files: usize) -> V
             if scanned >= max_files && hits.is_empty() {
                 break;
             }
-            let display = path.to_string_lossy().replace('\\', "/");
+            let display = resolved.to_string_lossy().replace('\\', "/");
             for (index, line) in String::from_utf8_lossy(&content).lines().enumerate() {
                 if line.to_lowercase().contains(needle) {
                     hits.push(format!(
@@ -1622,6 +1721,29 @@ mod tests {
         assert!(is_supported_tool("mouse_click", false, true));
         assert!(is_supported_tool("screenshot", false, true));
         assert!(!is_supported_tool("mouse_click", false, false));
+    }
+
+    #[test]
+    fn plan_mode_rejects_mutating_and_desktop_tools() {
+        for tool in ["write_file", "str_replace", "run_command", "mcp_call", "mouse_click", "type_text"] {
+            assert!(!is_plan_safe_tool(tool), "{tool} must not run in plan mode");
+        }
+        for tool in ["read_file", "list_dir", "search_files", "screenshot", "mcp_list_tools"] {
+            assert!(is_plan_safe_tool(tool), "{tool} should remain available in plan mode");
+        }
+    }
+
+    #[test]
+    fn unknown_renderer_field_is_not_task_authority() {
+        let task: AgentTask = serde_json::from_value(json!({
+            "modelId": "mock/test",
+            "mode": "agent",
+            "instructions": "inspect",
+            "history": [],
+            "unexpectedRendererField": true
+        }))
+        .expect("unknown renderer fields are ignored, never interpreted as authority");
+        assert_eq!(task.mode, "agent");
     }
 
     #[test]

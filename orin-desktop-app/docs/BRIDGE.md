@@ -35,12 +35,19 @@ Streaming results arrive as events (see below), correlated by `requestId`.
 | Command | Args | Returns |
 |---|---|---|
 | `dialog_pick_folder` | — | `{ name, path } \| null` |
+| `workspace_activate` | `root: string` | canonical active root; rejects invalid/non-directory paths |
 | `fs_read_dir` | `path: string, depth: u32 (max 4)` | `FileNode[]` |
 | `fs_read_file` | `path: string` | `content: string` |
 | `fs_write_file` | `path: string, content: string` | `null` |
 | `fs_exists` | `path: string` | `bool` |
 | `git_status` | `root: string` | `map<path, "M"\|"A"\|"D"\|"U"\|"?"\|"clean">` |
 | `search_workspace` | `root: string, query: string, maxResults: u32` | `SearchHit[]` |
+
+Filesystem commands operate only on the backend-owned active workspace. The
+folder picker or `workspace_activate` canonicalizes the root once; subsequent
+renderer paths are resolved by Rust, reject parent segments, and are checked
+again after symlink resolution. `git_status` and search require the active
+root exactly. The same guard is used by agent file tools and terminal cwd.
 
 ### Terminal (ConPTY)
 | Command | Args | Returns |
@@ -55,11 +62,14 @@ Streaming results arrive as events (see below), correlated by `requestId`.
 |---|---|---|
 | `agent_run` | `task: AgentTask` | `runId: string` |
 | `agent_stop` | `runId: string` | `null` |
-| `approval_respond` | `approvalId: string, approved: bool` | `null` |
+| `approval_respond` | `approvalId: string, approved: bool, runId?: string` | `null` |
 
 The loop emits `agent-event` stream items. When a tool needs permission the
 core emits an `approval-request` inside `agent-event` and blocks until
-`approval_respond`.
+`approval_respond`. Approval IDs are bound to the live run, expire after ten
+minutes, and are single-use. There is no `autoApprove` task field: phone-linked
+runs still ask for each mutating or computer-control action. Plan mode is
+enforced in Rust and permits read-only tools only.
 
 ### Computer Use
 | Command | Args | Returns |
@@ -69,11 +79,11 @@ core emits an `approval-request` inside `agent-event` and blocks until
 | `cu_permission_respond` | `promptId: string, allowed: bool` | `null` |
 | `cu_available_providers` | — | `["virtual", "windows", ...]` (present ones) |
 
-### Account (orinai.org sign-in)
+### Account (Core sign-in)
 | Command | Args | Returns |
 |---|---|---|
 | `auth_login` | `identifier: string, password: string` | `Session` |
-| `auth_register` | `name: string, identifier: string, password: string` | `Session` |
+| `auth_register` | `name: string, email: string, phone: string, password: string` | `Session` |
 | `auth_device_start` | — | `{ deviceCode, userCode, verifyUrl, expiresInSecs }` — also opens the system browser at `verifyUrl` |
 | `auth_device_wait` | `deviceCode: string` | `Session` once approved; errors on denied/expired/timeout |
 | `auth_status` | — | `{ signedIn: bool, session: Session \| null }` |
@@ -81,19 +91,16 @@ core emits an `approval-request` inside `agent-event` and blocks until
 | `backend_status` | — | `{ reachable, latencyMs, httpStatus }` — any HTTP status counts as alive |
 | `open_external` | `url: string` (http/https only) | opens the system browser — used for account creation, which lives on orinai.org |
 
-Session = `{uid, name, email, phone, authKind: "firebase" | "clerk"}`.
-Password sign-in calls `/api/auth/password`; browser sign-in uses the device
-grant on `/api/auth/device` (start → user approves the shown code on
-orinai.org → poll returns the approval). A Clerk approval —
-`{ auth_kind: "clerk", session_token, refresh_token?, user }` — is stored
-directly and refreshed via `POST /api/auth/clerk/refresh`; a legacy approval
-carries a Firebase custom token, exchanged via Identity Toolkit with the
-profile read from the ID-token claims. Either way the refresh credential lives
-in the OS keyring and the live token (~1 h) never leaves the Rust process.
-See `docs/CLERK-BRIDGE.md` for the server contract.
-Signed-out is a normal state: cloud features degrade to local mode, and the
-Orin Cloud models (`orin/orin-pro`, `orin/orin-flash`) only appear in
-`models_list` while a session exists.
+Session = `{uid, name, email, phone, authKind: "core" | "device" | "password"}`.
+Password sign-in calls Core `/api/auth/password` and stores the returned Core
+session token in the OS credential manager. Browser sign-in uses the current
+Core device grant on `/api/auth/device`: `action: "start"` creates a PKCE
+S256 challenge, the user approves the displayed code at
+`https://orinai.org/#device-auth`, and the desktop polls `action: "token"`.
+The access credential is short-lived; the rotated refresh credential is stored
+in the OS keyring and is never sent to the renderer. There are no Firebase or
+Clerk token exchanges in the desktop bridge. Signed-out is a normal state:
+cloud features degrade to local mode.
 
 ### Sync
 | Command | Args | Returns |

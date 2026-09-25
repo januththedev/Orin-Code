@@ -66,8 +66,8 @@ export interface AgentTask {
   history: AiMessage[]
   workspaceRoot?: string
   projectInstructions?: string
-  /** Phone-confirmed runs only — approvals pre-granted, still logged. */
-  autoApprove?: boolean
+  phoneTaskId?: string
+  phoneGrant?: string
 }
 
 export type AgentEvent =
@@ -144,6 +144,7 @@ export interface AuthSession {
   name: string
   email: string
   phone: string
+  authKind: 'core' | 'device' | 'password'
 }
 
 export interface AuthStatus {

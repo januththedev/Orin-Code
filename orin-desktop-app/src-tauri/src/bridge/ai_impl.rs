@@ -1,6 +1,6 @@
 // Provider implementations behind `ai_send`. Every stream chunk must carry the
 // requestId from the original request so the renderer can correlate events.
-use super::ai::{AiMessage, MessagePart, ModelInfo};
+use super::ai::{AiMessage, ModelInfo};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
@@ -387,6 +387,7 @@ pub mod orin_cloud {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use crate::bridge::ai::MessagePart;
 
         fn msg(role: &str, text: &str) -> AiMessage {
             AiMessage {

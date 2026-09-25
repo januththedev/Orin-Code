@@ -29,6 +29,9 @@ keyring = "2"
 enigo = "0.5"
 portable-pty = "0.8"
 base64 = "0.22"
+sha2 = "0.10"
+hmac = "0.12"
+url = "2"
 image = { version = "0.25", default-features = false, features = ["jpeg"] }
 
 uuid = { version = "1", features = ["v4"] }

@@ -73,9 +73,9 @@ export default function App() {
   }
 
   // Phone tasks: linked + explicitly enabled → poll the server queue and run
-  // confirmed tasks headlessly in the active project's workspace, reporting
-  // back so the bot forwards the result. Runs are pre-approved (the user
-  // tapped Run for that exact task) with a full local audit trail.
+  // confirmed tasks in the active project's workspace, reporting back so the
+  // bot forwards the result. Mutating steps still ask for a local or phone
+  // approval; there is no blanket renderer-controlled auto-approval.
   const phoneTasks = useSettingsStore((s) => s.phoneTasks)
   useEffect(() => {
     if (phase !== 'app' || !phoneTasks) return
@@ -114,7 +114,8 @@ export default function App() {
           history: [],
           workspaceRoot: project.rootPath,
           projectInstructions,
-          autoApprove: true,
+          phoneTaskId: task.taskId,
+          phoneGrant: task.approvalGrant,
         })
         off?.()
         off = bridge.onAgentEvent(runId, (event) => {

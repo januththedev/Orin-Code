@@ -77,6 +77,10 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
           activeProjectId: saved.activeProjectId ?? null,
           hydrated: true,
         })
+        const active = projects.find((project) => project.id === (saved.activeProjectId ?? null))
+        if (active?.rootPath) {
+          await bridge.workspaceActivate(active.rootPath).catch(() => {})
+        }
         return
       }
     } catch {

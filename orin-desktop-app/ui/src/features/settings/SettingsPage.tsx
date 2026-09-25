@@ -449,8 +449,9 @@ function TelegramSection() {
         <div className="setting-copy">
           <span className="setting-label">Run phone tasks on this PC</span>
           <span className="setting-hint">
-            Off unless you say so. When on, tasks you confirm on Telegram run here
-            with approvals pre-granted — every step stays in the local audit trail.
+            Off unless you say so. When on, tasks you confirm on Telegram run here;
+            every mutating step still asks for a local or phone approval and stays
+            in the local audit trail.
           </span>
         </div>
         <div className="setting-control">
