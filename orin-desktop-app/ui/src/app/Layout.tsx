@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Monitor,
   Sparkles,
+  FileText,
 } from 'lucide-react'
 import { bridge } from '../bridge/client'
 import { OrinMark } from '../components/OrinMark'
@@ -81,6 +82,7 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: 'artifacts', label: 'Artifacts', icon: Shapes },
   { id: 'studio', label: 'Studio', icon: Sparkles },
   { id: 'computer', label: 'Computer Use', icon: Monitor },
+  { id: 'notes', label: 'Notes', icon: FileText },
   { id: 'customize', label: 'Customize', icon: SlidersHorizontal },
 ]
 

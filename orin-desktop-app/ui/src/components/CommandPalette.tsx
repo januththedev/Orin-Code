@@ -12,7 +12,7 @@ export interface Command {
 
 export function useAppCommands(handlers: {
   newChat: () => void
-  navigate: (view: 'home' | 'chat' | 'projects' | 'artifacts' | 'ide' | 'computer' | 'customize' | 'settings' | 'skills' | 'connectors') => void
+  navigate: (view: 'home' | 'chat' | 'projects' | 'artifacts' | 'studio' | 'notes' | 'ide' | 'computer' | 'customize' | 'settings' | 'skills' | 'connectors') => void
   toggleTheme: () => void
   openSearch: () => void
 }): Command[] {
@@ -25,6 +25,7 @@ export function useAppCommands(handlers: {
       { id: 'go-artifacts', label: 'Open Artifacts', run: () => handlers.navigate('artifacts') },
       { id: 'go-code', label: 'Open coding workspace', hint: 'IDE', run: () => handlers.navigate('ide') },
       { id: 'go-computer', label: 'Open Computer Use', run: () => handlers.navigate('computer') },
+      { id: 'go-notes', label: 'Open project notes', run: () => handlers.navigate('notes') },
       { id: 'go-customize', label: 'Open Customize', run: () => handlers.navigate('customize') },
       { id: 'go-settings', label: 'Open Settings', run: () => handlers.navigate('settings') },
       { id: 'go-skills', label: 'Open Skills', run: () => handlers.navigate('skills') },
