@@ -8,6 +8,7 @@ export type ViewId =
   | 'projects'
   | 'artifacts'
   | 'studio'
+  | 'notes'
   | 'customize'
   | 'settings'
   | 'skills'

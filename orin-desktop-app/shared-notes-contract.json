@@ -1,0 +1,8 @@
+{
+  "package": "@orin/notes",
+  "version": "1.0.0",
+  "format": "logseq-markdown",
+  "preserves": ["page properties", "tags", "nested blocks", "stable block ids"],
+  "consumer": "orin-code",
+  "source": "https://github.com/januththedev/orin-platform/tree/main/packages/notes"
+}
