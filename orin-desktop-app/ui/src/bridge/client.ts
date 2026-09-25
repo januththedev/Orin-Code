@@ -116,7 +116,7 @@ function mockInvoke<T>(command: string, args: Record<string, unknown>): Promise<
       // Browser dev has no real approval page — sign in after a beat.
       return new Promise<T>((resolve) =>
         setTimeout(
-          () => resolve({ uid: 'mock-user', name: 'Browser Dev', email: 'dev@orin.ai', phone: '' } as T),
+          () => resolve({ uid: 'mock-user', name: 'Browser Dev', email: 'dev@orin.ai', phone: '', authKind: 'core' } as T),
           1500,
         ),
       )
@@ -144,6 +144,8 @@ function mockInvoke<T>(command: string, args: Record<string, unknown>): Promise<
       return Promise.resolve([] as T)
     case 'dialog_pick_folder':
       return Promise.resolve(null as T)
+    case 'workspace_activate':
+      return Promise.resolve(String(args.root ?? '') as T)
     case 'ai_send': {
       const request = args.req as AiSendRequest
       const prompt =
@@ -223,7 +225,7 @@ export const bridge = {
   pcLinkStart: (): Promise<string> => invoke('pc_link_start'),
   pcLinkStatus: (): Promise<boolean> => invoke('pc_link_status'),
   pcLinkUnlink: () => invoke<void>('pc_link_unlink'),
-  pcTaskPoll: (): Promise<{ taskId: string; instructions: string } | null> =>
+  pcTaskPoll: (): Promise<{ taskId: string; instructions: string; approvalGrant: string } | null> =>
     invoke('pc_task_poll'),
   pcTaskResult: (taskId: string, ok: boolean, summary: string): Promise<void> =>
     invoke('pc_task_result', { taskId, ok, summary }),
@@ -243,6 +245,7 @@ export const bridge = {
 
   // files
   pickFolder: (): Promise<FolderPick | null> => invoke('dialog_pick_folder'),
+  workspaceActivate: (root: string): Promise<string> => invoke('workspace_activate', { root }),
   readDir: (path: string, depth = 3): Promise<FileNode[]> => invoke('fs_read_dir', { path, depth }),
   readFile: (path: string): Promise<string> => invoke('fs_read_file', { path }),
   writeFile: (path: string, content: string) => invoke<void>('fs_write_file', { path, content }),
@@ -261,8 +264,8 @@ export const bridge = {
   // agent
   agentRun: (task: AgentTask) => invoke<string>('agent_run', { task }),
   agentStop: (runId: string) => invoke<void>('agent_stop', { runId }),
-  approvalRespond: (approvalId: string, approved: boolean) =>
-    invoke<void>('approval_respond', { approvalId, approved }),
+  approvalRespond: (approvalId: string, approved: boolean, runId?: string) =>
+    invoke<void>('approval_respond', { approvalId, approved, runId: runId ?? null }),
 
   // computer use
   cuStart: (task: CuTask) => invoke<string>('cu_start', { task }),
@@ -274,8 +277,8 @@ export const bridge = {
   // account + sync (orinai.org)
   authLogin: (identifier: string, password: string) =>
     invoke<AuthSession>('auth_login', { identifier, password }),
-  authRegister: (name: string, identifier: string, password: string) =>
-    invoke<AuthSession>('auth_register', { name, identifier, password }),
+  authRegister: (name: string, email: string, phone: string, password: string) =>
+    invoke<AuthSession>('auth_register', { name, email, phone, password }),
   // Device flow: start opens orinai.org in the system browser; wait resolves
   // once the user approves the code there (or rejects with expired/denied).
   authDeviceStart: () => invoke<AuthDeviceStart>('auth_device_start'),

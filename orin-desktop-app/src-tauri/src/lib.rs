@@ -55,6 +55,7 @@ pub fn run() {
             bridge::mcp::mcp_set_key,
             bridge::mcp::mcp_test,
             bridge::fs::dialog_pick_folder,
+            bridge::fs::workspace_activate,
             bridge::fs::fs_read_dir,
             bridge::fs::fs_read_file,
             bridge::fs::fs_write_file,

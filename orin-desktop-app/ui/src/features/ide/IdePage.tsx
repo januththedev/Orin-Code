@@ -61,6 +61,10 @@ export default function IdePage() {
   )
   const root = project?.rootPath ?? null
 
+  useEffect(() => {
+    if (root) bridge.workspaceActivate(root).catch(() => {})
+  }, [root])
+
   const [tabs, setTabs] = useState<OpenTab[]>([])
   const [activePath, setActivePath] = useState<string | null>(null)
 

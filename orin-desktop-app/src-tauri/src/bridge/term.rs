@@ -14,6 +14,16 @@ pub struct TermHandle {
 
 #[tauri::command]
 pub fn term_create(cwd: Option<String>, app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    let cwd = if let Some(requested) = cwd {
+        let workspace = state.active_workspace()?;
+        let resolved = workspace.resolve_existing(&requested)?;
+        if !resolved.is_dir() {
+            return Err("Terminal working directory must be a directory inside the active workspace.".into());
+        }
+        Some(resolved)
+    } else {
+        None
+    };
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize { rows: 30, cols: 110, pixel_width: 0, pixel_height: 0 })

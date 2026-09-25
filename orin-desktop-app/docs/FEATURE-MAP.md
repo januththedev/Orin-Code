@@ -22,20 +22,20 @@ owns network, files, terminals, keys). Contract: `docs/BRIDGE.md`.
 
 ## 2. Identity — `src-tauri/src/bridge/auth.rs`, `stores/authStore.ts`
 
-- `Session { uid, name, email, phone, authKind }`. Old stored sessions
-  default to `"firebase"` and keep working.
-- Password `auth_login`/`auth_register` → Firebase custom-token exchange
-  (unchanged legacy path).
-- Browser device flow `auth_device_start` (opens orinai.org, shows user
-  code) → `auth_device_wait` polls `POST /api/auth/device`:
-  Clerk approval `{ auth_kind:"clerk", session_token, refresh_token?,
-  user }` stored directly; Firebase `custom_token` approval uses the old
-  exchange. Same session/keyring slots either way.
-- `ensure_id_token`: live token cached in memory (~1 h, refresh <10 min
-  remaining). Clerk refreshes via `POST /api/auth/clerk/refresh`;
-  Firebase via Google securetoken. Signed-out = normal, degrades to BYOK.
-- Secrets: refresh/session tokens in OS keyring (`orin-ai` service);
-  live token never leaves Rust. Server contract: `docs/CLERK-BRIDGE.md`.
+- `Session { uid, name, email, phone, authKind }`, where `authKind` is
+  `password`, `device`, or the compatibility value `core`.
+- Password `auth_login`/`auth_register` calls Core `/api/auth/password`; the
+  compatibility header returns the Core session token to Rust only.
+- Browser device flow calls Core `/api/auth/device` with PKCE S256:
+  `action: "start"` → browser approval → `action: "token"` polling.
+  Device access credentials last 15 minutes; rotated refresh credentials last
+  30 days and live only in the OS keyring.
+- `ensure_id_token` keeps the live access credential in Rust memory and
+  refreshes device sessions through Core. Signed-out is normal and degrades
+  to BYOK/offline mode.
+- No Firebase or Clerk token exchange is part of the desktop bridge. The
+  current contract is `docs/BACKEND-CONTRACT.md`; `docs/CLERK-BRIDGE.md` is
+  historical only.
 
 ## 3. Provider router (embedded OmniRoute) — `bridge/presets.rs`, `headers`
 
@@ -77,11 +77,12 @@ owns network, files, terminals, keys). Contract: `docs/BRIDGE.md`.
   `write_file`, `run_command` (120 s, no console flash), + 8
   desktop-control tools behind the Computer-Use policy gate.
 - Harness guarantees: diff preview (`diff` event, unified) **before**
-  every file approval; `approval-request` with 10-min timeout for
-  write/str_replace/run/desktop; **trajectory log**
+  every file approval; `approval-request` with a run-bound, single-use
+  10-minute token for write/str_replace/run/desktop; **trajectory log**
   `{workspace}/.orin-trajectory/{run_id}.jsonl` (run_start, assistant,
-  tool_start/end, done/error) for resume/fork/replay; **plan mode**
-  forces read-only + step plan.
+  tool_start/end, done/error) for resume/fork/replay; **plan mode** is
+  enforced in Rust and permits read-only tools only. There is no renderer
+  `autoApprove` field.
 - UI surfaces: plan steps, tool-start/end, step rows, assistant messages,
   ArtifactViewer diffs with Apply/Reject.
 
@@ -145,10 +146,12 @@ owns network, files, terminals, keys). Contract: `docs/BRIDGE.md`.
 | 8 | Built-in headers/endpoints/docs | ✅ `preset_headers`, `docsUrl` Get-key links | Settings → Models |
 | 9a | Sign in → no keys | ✅ device flow + cloud models | Welcome → Sign in |
 | 9b | BYOK → enter, add more later | ✅ any-key gate + Settings anytime | Welcome → BYOK, Settings → Models/Account |
-| 10 | Clerk | 🟡 PC ready (`552ce4c`), needs server | `docs/CLERK-BRIDGE.md` §0–§4 |
+| 10 | Core account/device auth | ✅ Rust + renderer contract updated | `docs/BACKEND-CONTRACT.md`, Core `/api/auth/device` |
 
 ## 11. Needs-you-action (not code defects)
 
-- Clerk app keys + 3 orinai.org endpoints (`CLERK-BRIDGE.md`).
-- Firebase stays as fallback until then — deleting it is a one-commit
-  follow-up once Clerk is live.
+- Configure Core deployment secrets for the account service and device token
+  signing. The desktop does not contain provider secrets.
+- Remote phone task execution remains disabled until Core returns signed,
+  task-bound approval grants; local and per-action phone approvals are the
+  only active execution path.

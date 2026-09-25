@@ -8,7 +8,7 @@ interface AuthStore {
   deviceUserCode: string | null
   hydrate: () => Promise<void>
   login: (identifier: string, password: string) => Promise<string | null>
-  register: (name: string, identifier: string, password: string) => Promise<string | null>
+  register: (name: string, email: string, phone: string, password: string) => Promise<string | null>
   loginWithBrowser: () => Promise<string | null>
   logout: () => Promise<void>
 }
@@ -38,10 +38,10 @@ export const useAuthStore = create<AuthStore>((set) => ({
     }
   },
 
-  register: async (name, identifier, password) => {
+  register: async (name, email, phone, password) => {
     set({ busy: true })
     try {
-      const session = await bridge.authRegister(name, identifier, password)
+      const session = await bridge.authRegister(name, email, phone, password)
       set({ status: { signedIn: true, session }, busy: false })
       return null
     } catch (error) {

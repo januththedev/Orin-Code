@@ -4,24 +4,36 @@
 // at runtime from `ORIN_TELEGRAM_BOT_TOKEN` first, else the OS keyring slot
 // `telegram-bot-token` (set once via `telegram_set_token` from Settings).
 // Error strings never echo the token — only its presence/absence.
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine as _;
+use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256};
 use tauri::State;
 
 use super::AppState;
 
 const KEYRING_SLOT: &str = "telegram-bot-token";
+const DEVICE_SECRET_SLOT: &str = "pc-device-signing-secret";
 /// Bot API hard limit per message (closer to 4096; keep margin).
 const MAX_TEXT_CHARS: usize = 4000;
 
+fn valid_bot_token(token: &str) -> bool {
+    let Some((id, secret)) = token.split_once(':') else { return false; };
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_digit())
+        && secret.len() >= 20
+        && secret.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
 fn bot_token() -> Option<String> {
     if let Ok(token) = std::env::var("ORIN_TELEGRAM_BOT_TOKEN") {
-        if !token.trim().is_empty() {
-            return Some(token.trim().to_string());
-        }
+        let token = token.trim();
+        if valid_bot_token(token) { return Some(token.to_string()); }
     }
     keyring::Entry::new("orin-ai", KEYRING_SLOT)
         .ok()
         .and_then(|entry| entry.get_password().ok())
-        .filter(|token| !token.trim().is_empty())
+        .filter(|token| valid_bot_token(token.trim()))
+        .map(|token| token.trim().to_string())
 }
 
 /// Store the bot token in the OS keyring. Use this instead of env files when
@@ -31,14 +43,53 @@ pub fn telegram_set_token(token: String) -> Result<(), String> {
     if token.trim().is_empty() {
         return Err("Paste the bot token first.".into());
     }
-    // Minimal shape check without leaking anything on failure.
-    if !token.contains(':') {
+    // Validate without echoing the token back into an error or log.
+    if !valid_bot_token(token.trim()) {
         return Err("That doesn't look like a Bot API token.".into());
     }
     keyring::Entry::new("orin-ai", KEYRING_SLOT)
         .map_err(|e| e.to_string())?
         .set_password(token.trim())
         .map_err(|e| e.to_string())
+}
+
+pub(crate) fn device_secret() -> Option<String> {
+    keyring::Entry::new("orin-code", DEVICE_SECRET_SLOT)
+        .ok()
+        .and_then(|entry| entry.get_password().ok())
+        .filter(|value| value.len() >= 32)
+}
+
+fn save_device_secret(value: &str) -> Result<(), String> {
+    if value.len() < 32 { return Err("Core returned an invalid PC device secret.".into()); }
+    keyring::Entry::new("orin-code", DEVICE_SECRET_SLOT)
+        .map_err(|e| e.to_string())?
+        .set_password(value)
+        .map_err(|e| e.to_string())
+}
+
+pub(crate) fn verify_grant(grant: &str, task_id: &str, instructions: &str, machine: &str, secret: &str) -> Result<(), String> {
+    let (encoded, signature) = grant.split_once('.').ok_or("Phone task approval grant is malformed.")?;
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).map_err(|_| "Invalid PC device secret.")?;
+    mac.update(encoded.as_bytes());
+    let signature_bytes = URL_SAFE_NO_PAD.decode(signature).map_err(|_| "Phone task approval grant is malformed.")?;
+    mac.verify_slice(&signature_bytes).map_err(|_| "Phone task approval grant signature is invalid.")?;
+    let payload: serde_json::Value = serde_json::from_slice(&URL_SAFE_NO_PAD.decode(encoded).map_err(|_| "Phone task approval grant is malformed.")?).map_err(|_| "Phone task approval grant is malformed.")?;
+    let expected_hash = format!("{:x}", Sha256::digest(instructions.as_bytes()));
+    if payload.get("v").and_then(|v| v.as_u64()) != Some(1)
+        || payload.get("taskId").and_then(|v| v.as_str()) != Some(task_id)
+        || payload.get("machineId").and_then(|v| v.as_str()) != Some(machine)
+        || payload.get("instructionsHash").and_then(|v| v.as_str()) != Some(expected_hash.as_str())
+        || payload.get("exp").and_then(|v| v.as_u64()).unwrap_or(0) <= now_ms()
+        || !payload.get("allowedTools").and_then(|v| v.as_array()).map(|v| !v.is_empty()).unwrap_or(false)
+    {
+        return Err("Phone task approval grant does not match this task.".into());
+    }
+    Ok(())
+}
+
+fn now_ms() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 /// True when a token is available via env or keyring. Never reveals it.
@@ -92,6 +143,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn bot_token_shape_is_strict() {
+        assert!(valid_bot_token("123456789:abcdefghijklmnopqrstuvwxyzABCDEF"));
+        assert!(!valid_bot_token("123456789:short"));
+        assert!(!valid_bot_token("token/with:path?query"));
+    }
+
+    #[test]
     fn truncation_keeps_char_boundary() {
         let mut message = "é".repeat(5000);
         assert!(message.chars().count() > super::MAX_TEXT_CHARS);
@@ -112,10 +170,32 @@ mod tests {
             ]
         });
         let decisions = parse_decisions(&body);
-        assert_eq!(match_decision(&decisions, "a1"), Some(true));
-        assert_eq!(match_decision(&decisions, "b2"), Some(false));
-        assert_eq!(match_decision(&decisions, "nope"), None);
+        assert_eq!(decisions[0], ("a1".to_string(), true));
+        assert_eq!(decisions[1], ("b2".to_string(), false));
+        assert!(!decisions.iter().any(|(id, _)| id == "nope"));
         assert!(parse_decisions(&serde_json::json!({})).is_empty());
+    }
+
+    #[test]
+    fn phone_grant_is_bound_and_expiring() {
+        let secret = "device-secret-that-is-at-least-32-characters";
+        let instructions = "run the tests";
+        let payload = serde_json::json!({
+            "v": 1,
+            "jti": "nonce-1",
+            "taskId": "task-1",
+            "machineId": "machine-1",
+            "instructionsHash": format!("{:x}", Sha256::digest(instructions.as_bytes())),
+            "allowedTools": ["run_command"],
+            "exp": now_ms() + 60_000,
+        });
+        let encoded = URL_SAFE_NO_PAD.encode(payload.to_string());
+        let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(encoded.as_bytes());
+        let grant = format!("{encoded}.{}", URL_SAFE_NO_PAD.encode(mac.finalize().into_bytes()));
+        assert!(verify_grant(&grant, "task-1", instructions, "machine-1", secret).is_ok());
+        assert!(verify_grant(&grant, "task-2", instructions, "machine-1", secret).is_err());
+        assert!(verify_grant(&grant, "task-1", "different", "machine-1", secret).is_err());
     }
 }
 
@@ -126,7 +206,7 @@ mod tests {
 // ---------------------------------------------------------------------------
 
 fn api_base() -> String {
-    std::env::var("ORIN_API_BASE").unwrap_or_else(|_| "https://orinai.org".to_string())
+    super::auth::api_base()
 }
 
 /// Live phone-mirror context for one agent run. Built once at run start;
@@ -135,6 +215,7 @@ fn api_base() -> String {
 pub struct PhoneMirror {
     pub api_base: String,
     pub token: String,
+    pub machine_id: String,
 }
 
 async fn authed(api_base: &str, token: &str, action: &str, extra: serde_json::Value) -> Result<serde_json::Value, String> {
@@ -185,10 +266,6 @@ fn parse_decisions(body: &serde_json::Value) -> Vec<(String, bool)> {
         .unwrap_or_default()
 }
 
-fn match_decision(decisions: &[(String, bool)], id: &str) -> Option<bool> {
-    decisions.iter().find(|(aid, _)| aid == id).map(|(_, approved)| *approved)
-}
-
 /// Best-effort push of one approval to the linked phone. Returns false when
 /// mirroring should be switched off for the rest of the run.
 pub async fn mirror_push(
@@ -203,6 +280,7 @@ pub async fn mirror_push(
         &mirror.token,
         "push",
         serde_json::json!({
+            "machine_id": mirror.machine_id,
             "approvalId": approval_id,
             "tool": tool,
             "title": title.chars().take(200).collect::<String>(),
@@ -215,15 +293,10 @@ pub async fn mirror_push(
 
 /// Poll consumed phone decisions. Errors are swallowed (local UI stays king).
 pub async fn mirror_poll(mirror: &PhoneMirror) -> Vec<(String, bool)> {
-    authed(&mirror.api_base, &mirror.token, "poll", serde_json::json!({}))
+    authed(&mirror.api_base, &mirror.token, "poll", serde_json::json!({ "machine_id": mirror.machine_id }))
         .await
         .map(|body| parse_decisions(&body))
         .unwrap_or_default()
-}
-
-/// Find one run's decision in a poll batch. Used by the agent approval gate.
-pub fn mirror_match(decisions: &[(String, bool)], id: &str) -> Option<bool> {
-    match_decision(decisions, id)
 }
 
 /// Try to establish mirroring for an agent run: needs a live session AND a
@@ -231,7 +304,7 @@ pub fn mirror_match(decisions: &[(String, bool)], id: &str) -> Option<bool> {
 pub async fn mirror_for_run(state: &AppState) -> Option<PhoneMirror> {
     let token = super::auth::ensure_id_token(state).await.ok()?;
     let api_base = api_base();
-    let linked = authed(&api_base, &token, "status", serde_json::json!({}))
+    let linked = authed(&api_base, &token, "status", serde_json::json!({ "machine_id": machine_id(state) }))
         .await
         .ok()?
         .get("linked")
@@ -240,7 +313,7 @@ pub async fn mirror_for_run(state: &AppState) -> Option<PhoneMirror> {
     if !linked {
         return None;
     }
-    Some(PhoneMirror { api_base, token })
+    Some(PhoneMirror { api_base, token, machine_id: machine_id(state) })
 }
 
 /// Pairing code for Settings → Notifications ("Link phone"). Registers this
@@ -260,6 +333,9 @@ pub async fn pc_link_start(state: State<'_, AppState>) -> Result<String, String>
         }),
     )
     .await?;
+    if let Some(secret) = reply.get("deviceSecret").and_then(|value| value.as_str()) {
+        save_device_secret(secret)?;
+    }
     reply["code"].as_str().map(str::to_string).ok_or("No pairing code returned.".into())
 }
 
@@ -268,7 +344,7 @@ pub async fn pc_link_status(state: State<'_, AppState>) -> Result<bool, String> 
     let token = super::auth::ensure_id_token(state.inner())
         .await
         .map_err(|_| "Sign in to Settings → Account first.".to_string())?;
-    let reply = authed(&api_base(), &token, "status", serde_json::json!({})).await?;
+    let reply = authed(&api_base(), &token, "status", serde_json::json!({ "machine_id": machine_id(state.inner()) })).await?;
     Ok(reply.get("linked").and_then(|v| v.as_bool()).unwrap_or(false))
 }
 
@@ -277,7 +353,7 @@ pub async fn pc_link_unlink(state: State<'_, AppState>) -> Result<(), String> {
     let token = super::auth::ensure_id_token(state.inner())
         .await
         .map_err(|_| "Sign in to Settings → Account first.".to_string())?;
-    authed(&api_base(), &token, "unlink", serde_json::json!({})).await?;
+    authed(&api_base(), &token, "unlink", serde_json::json!({ "machine_id": machine_id(state.inner()) })).await?;
     Ok(())
 }
 
@@ -286,6 +362,8 @@ pub struct PhoneTask {
     #[serde(rename = "taskId")]
     pub task_id: String,
     pub instructions: String,
+    #[serde(rename = "approvalGrant")]
+    pub approval_grant: String,
 }
 
 /// Oldest queued phone task for MY machine (or null). Machine identity is
@@ -307,10 +385,12 @@ pub async fn pc_task_poll(state: State<'_, AppState>) -> Result<Option<PhoneTask
         return Ok(None);
     }
     let task = task.unwrap();
-    Ok(Some(PhoneTask {
-        task_id: task["taskId"].as_str().unwrap_or_default().to_string(),
-        instructions: task["instructions"].as_str().unwrap_or_default().to_string(),
-    }))
+    let task_id = task["taskId"].as_str().ok_or("Phone task is missing taskId.")?.to_string();
+    let instructions = task["instructions"].as_str().ok_or("Phone task is missing instructions.")?.to_string();
+    let approval_grant = task["approvalGrant"].as_str().ok_or("Phone task is missing its signed approval grant.")?.to_string();
+    let secret = device_secret().ok_or("This PC is not enrolled for signed phone approvals. Link it again.")?;
+    verify_grant(&approval_grant, &task_id, &instructions, &machine_id, &secret)?;
+    Ok(Some(PhoneTask { task_id, instructions, approval_grant }))
 }
 
 /// Report a finished phone task; the server forwards the summary to Telegram.
@@ -326,13 +406,13 @@ pub async fn pc_task_result(
         &api_base(),
         &token,
         "task_result",
-        serde_json::json!({ "taskId": task_id, "ok": ok, "summary": summary }),
+        serde_json::json!({ "taskId": task_id, "machine_id": machine_id(state.inner()), "ok": ok, "summary": summary }),
     )
     .await?;
     Ok(())
 }
 
-fn machine_id(state: &AppState) -> String {
+pub(crate) fn machine_id(state: &AppState) -> String {
     const KEY: &str = "phone.machine_id";
     if let Some(existing) = super::store::read_setting(state, KEY) {
         if !existing.trim().is_empty() {

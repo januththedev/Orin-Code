@@ -64,6 +64,7 @@ export function FileExplorer({
   const load = async () => {
     if (!root) return
     try {
+      await bridge.workspaceActivate(root)
       const nodes = await bridge.readDir(root, 3)
       setTree(nodes)
       bridge
