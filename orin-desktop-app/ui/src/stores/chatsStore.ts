@@ -2,6 +2,14 @@ import { create } from 'zustand'
 import { bridge } from '../bridge/client'
 import type { AiMessage, MessagePart } from '../bridge/types'
 import { useSettingsStore } from './settingsStore'
+import { buildMemoryContext, useMemoryStore } from './memoryStore'
+import { playSound, type SoundName } from '../design/sound'
+
+/** Play a cue only if the user has sound on, at the volume they chose. */
+const cue = (name: SoundName) => {
+  const { sound, volume } = useSettingsStore.getState()
+  playSound(name, sound, volume)
+}
 
 export type ChatMode = 'chat' | 'cowork' | 'agent' | 'computer'
 
@@ -137,6 +145,7 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
   sendMessage: (text, opts) => {
     const trimmed = text.trim()
     if (!trimmed) return
+    cue('send')
     const state = get()
     let chat = state.conversations.find((c) => c.id === state.activeId)
     if (!chat) {
@@ -169,7 +178,15 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
     const history: AiMessage[] = chat.messages
       .slice(-16)
       .map((m) => ({ role: m.role, parts: [{ type: 'text', text: m.content }] }))
+    // Memory rides along as a system message: global first, then this chat's
+    // own. Read straight off the store rather than through a hook so the send
+    // path stays a plain function and does not re-render on every keystroke.
+    const memory = useMemoryStore.getState()
+    const memoryContext = buildMemoryContext(memory.global, memory.byChat[chatId] ?? [])
     const messages: AiMessage[] = [
+      ...(memoryContext
+        ? [{ role: 'system' as const, parts: [{ type: 'text' as const, text: memoryContext }] }]
+        : []),
       ...history,
       {
         role: 'user',
@@ -196,11 +213,13 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
         patchResponse({ content: full || ' ', pending: false })
         persist(get().conversations)
         if (aborted) cancel()
+        else cue('reply')
       },
       onError: (error) => {
         activeStreamDisposer = null
         patchResponse({ pending: false, error, content: '' })
         persist(get().conversations)
+        cue('error')
       },
     })
     activeStreamDisposer = cancel

@@ -34,3 +34,4 @@ src/vs/workbench/contrib/orin/browser/react/src2/**
 
 # stale build output copies
 out-build-old/
+.mimosa/
