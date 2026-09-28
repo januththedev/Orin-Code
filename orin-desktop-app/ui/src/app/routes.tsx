@@ -14,6 +14,7 @@ const SkillsPage = lazy(() => import('../features/settings/SkillsPage'))
 const ConnectorsPage = lazy(() => import('../features/settings/ConnectorsPage'))
 const StudioPage = lazy(() => import('../features/studio/StudioPage'))
 const NotesPage = lazy(() => import('../features/notes/NotesPage'))
+const MemoryPage = lazy(() => import('../features/memory/MemoryPage'))
 
 export function CurrentView({ view }: { view: ViewId }) {
   switch (view) {
@@ -27,6 +28,8 @@ export function CurrentView({ view }: { view: ViewId }) {
       return <StudioPage />
     case 'notes':
       return <NotesPage />
+    case 'memory':
+      return <MemoryPage />
     case 'ide':
       return <IdePage />
     case 'computer':

@@ -14,6 +14,10 @@ interface SettingsState {
   cloudSync: boolean
   /** Run phone-confirmed Telegram tasks on this PC (explicit opt-in). */
   phoneTasks: boolean
+  /** Interface sound cues. Off by default — an app that talks unasked gets muted. */
+  sound: boolean
+  /** Master volume for those cues, 0–1. */
+  volume: number
   hydrate: () => Promise<void>
   update: (patch: Partial<Omit<SettingsState, 'hydrate' | 'update'>>) => void
 }
@@ -30,6 +34,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   defaultMode: 'chat',
   cloudSync: true,
   phoneTasks: false,
+  sound: false,
+  volume: 0.5,
 
   hydrate: async () => {
     try {

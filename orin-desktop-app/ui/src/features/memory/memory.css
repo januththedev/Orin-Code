@@ -1,0 +1,39 @@
+.memory-view { height: 100%; overflow: auto; padding: 34px clamp(22px, 5vw, 72px); background: var(--bg); color: var(--text); }
+.memory-head { max-width: 1180px; margin: 0 auto 22px; }
+.memory-head h1 { margin: 0 0 6px; font-size: clamp(28px, 4vw, 44px); letter-spacing: -.03em; }
+.memory-sub { margin: 0; color: var(--muted); max-width: 680px; line-height: 1.6; }
+
+.memory-columns { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 22px; align-items: start; }
+.memory-col { border: 1px solid var(--line); border-radius: 16px; padding: 20px; background: var(--panel); }
+.memory-col-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.memory-col-head h2 { margin: 0; font-size: 16px; letter-spacing: -.01em; }
+.memory-count { font: 11px var(--font-mono); color: var(--accent); border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px; }
+.memory-col-head .ghost { margin-left: auto; }
+.memory-hint { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+.memory-chat-picker { display: grid; gap: 6px; margin-bottom: 12px; font: 11px var(--font-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.memory-chat-picker select { width: 100%; border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; background: var(--panel-raised); color: var(--text); font: 14px/1.4 var(--font-sans); text-transform: none; letter-spacing: normal; }
+
+.memory-composer { display: grid; gap: 9px; margin-bottom: 16px; }
+.memory-composer textarea { width: 100%; min-height: 66px; resize: vertical; border: 1px solid var(--line); border-radius: 11px; padding: 11px 13px; background: var(--panel-raised); color: var(--text); font: 14px/1.6 var(--font-sans); outline: none; }
+.memory-composer textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
+.memory-composer button { justify-self: start; border: 0; border-radius: 9px; padding: 9px 16px; background: var(--accent); color: #101018; font-weight: 700; cursor: pointer; }
+.memory-composer button:disabled { opacity: .45; cursor: not-allowed; }
+
+.memory-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.memory-item { border: 1px solid var(--line); border-radius: 12px; padding: 13px 14px; background: var(--panel-raised); }
+.memory-content { margin: 0 0 7px; font-size: 14.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.memory-meta { display: flex; align-items: center; gap: 7px; color: var(--muted); font: 11px var(--font-mono); }
+.memory-dot { opacity: .55; }
+.memory-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 11px; }
+.memory-actions .ghost { border: 1px solid var(--line); border-radius: 8px; padding: 5px 10px; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.memory-actions .ghost:hover { color: var(--text); border-color: var(--accent); }
+.memory-actions .ghost.danger:hover { color: #f87171; border-color: #f87171; }
+
+.memory-edit { display: grid; gap: 9px; }
+.memory-edit textarea { width: 100%; min-height: 70px; resize: vertical; border: 1px solid var(--accent); border-radius: 9px; padding: 10px 12px; background: var(--panel); color: var(--text); font: 14px/1.6 var(--font-sans); outline: none; }
+.memory-edit-actions { display: flex; gap: 8px; }
+.memory-edit-actions button { border: 0; border-radius: 8px; padding: 7px 14px; background: var(--accent); color: #101018; font-weight: 700; cursor: pointer; }
+.memory-edit-actions .ghost { background: transparent; border: 1px solid var(--line); color: var(--muted); }
+
+.memory-empty { margin: 0; padding: 16px 2px; color: var(--muted); font-size: 13.5px; line-height: 1.6; }

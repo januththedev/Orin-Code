@@ -1,5 +1,6 @@
 import { useSettingsStore } from '../../stores/settingsStore'
 import { SettingRow } from './SettingsLayout'
+import { playSound, unlockAudio } from '../../design/sound'
 import './settings.css'
 
 const ACCENTS = ['#e08a3c', '#d97b4f', '#c9a24b', '#7ba7bc', '#9c8ec9', '#7bc78a']
@@ -78,6 +79,41 @@ export default function CustomizePage() {
           ))}
         </select>
       </SettingRow>
+
+      <SettingRow label="Sound" hint="Short cues when you send, when a reply lands, and on error. Off by default.">
+        <div className="seg-group">
+          {([false, true] as const).map((on) => (
+            <button
+              key={String(on)}
+              className={`seg-option ${settings.sound === on ? 'active' : ''}`}
+              onClick={() => {
+                settings.update({ sound: on })
+                if (on) { unlockAudio(); playSound('success', true, settings.volume) }
+              }}
+            >
+              {on ? 'On' : 'Off'}
+            </button>
+          ))}
+        </div>
+      </SettingRow>
+
+      {settings.sound && (
+        <SettingRow label="Volume" hint="Applies to every cue. Move the slider to preview.">
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.05}
+            value={settings.volume}
+            onChange={(event) => {
+              const volume = Number(event.target.value)
+              settings.update({ volume })
+              playSound('reply', true, volume)
+            }}
+            style={{ width: 180, accentColor: settings.accent }}
+          />
+        </SettingRow>
+      )}
 
       <p className="settings-note">Changes apply instantly and persist locally.</p>
     </div>
