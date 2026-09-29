@@ -3,6 +3,17 @@ import { bridge } from '../bridge/client'
 import type { AiMessage, MessagePart } from '../bridge/types'
 import { useSettingsStore } from './settingsStore'
 import { buildMemoryContext, useMemoryStore } from './memoryStore'
+import {
+  INDEX_KEY,
+  LEGACY_KEY,
+  buildIndex,
+  conversationKey,
+  hydrate,
+  planMigration,
+  toSummary,
+  upsertSummary,
+  type ChatSummary,
+} from './chatStoreModel'
 import { playSound, type SoundName } from '../design/sound'
 
 /** Play a cue only if the user has sound on, at the volume they chose. */
@@ -36,9 +47,14 @@ export interface Conversation {
 }
 
 interface ChatsState {
+  /** Loaded conversations. Only opened ones are held here. */
   conversations: Conversation[]
+  /** The small per-conversation index read at launch. */
+  index: ChatSummary[]
   activeId: string | null
   hydrate: () => Promise<void>
+  /** Load a conversation on demand; safe to call repeatedly. */
+  openChat: (id: string) => Promise<void>
   createChat: (mode?: ChatMode, projectId?: string | null) => string
   selectChat: (id: string) => void
   renameChat: (id: string, title: string) => void
@@ -51,7 +67,6 @@ interface ChatsState {
   stopStreaming: () => void
 }
 
-const CHATS_KEY = 'chats'
 let saveTimer: ReturnType<typeof setTimeout> | undefined
 /** Only conversations with at least one message are worth keeping — an
  * untouched "new chat" must never be saved, locally or to the cloud. */
@@ -64,12 +79,54 @@ export const settlePending = (conversations: Conversation[]) =>
     ...c,
     messages: c.messages.map((m) => (m.pending ? { ...m, pending: false } : m)),
   }))
-const persist = (conversations: Conversation[]) => {
-  clearTimeout(saveTimer)
+/**
+ * Persist the index plus only the conversations that changed.
+ *
+ * Writing every message on every keystroke is what made chats slow: the old
+ * single blob meant each save rewrote the whole history. `dirty` holds the ids
+ * touched since the last flush; everything else is already on disk.
+ */
+const dirty = new Set<string>()
+
+/**
+ * Write the index and only the conversations that changed.
+ *
+ * `conversations` holds only the *opened* chats, so the index has to be merged
+ * with the rows already on disk. Building it from `conversations` alone would
+ * silently drop every chat the user has but has not opened this session.
+ */
+const flush = (conversations: Conversation[]) => {
   const kept = withMessages(conversations)
-  saveTimer = setTimeout(() => bridge.storeSet(CHATS_KEY, kept).catch(() => {}), 350)
+  const writes: Promise<unknown>[] = []
+
+  let index = useChatsStore.getState().index
+  for (const chat of kept) {
+    index = upsertSummary(index, toSummary(chat))
+  }
+  useChatsStore.setState({ index })
+  writes.push(bridge.storeSet(INDEX_KEY, index).catch(() => {}))
+
+  for (const chat of kept) {
+    if (dirty.has(chat.id)) {
+      writes.push(bridge.storeSet(conversationKey(chat.id), chat.messages).catch(() => {}))
+    }
+  }
+  // A deleted conversation's blob must go too, or it is orphaned forever.
+  for (const id of dirty) {
+    if (!kept.some((c) => c.id === id)) {
+      writes.push(bridge.storeDelete(conversationKey(id)).catch(() => {}))
+    }
+  }
+  dirty.clear()
+  void Promise.all(writes)
   // Every mutation funnels through here — one hook covers cloud sync.
   void import('./cloudSync').then(({ scheduleCloudSync }) => scheduleCloudSync())
+}
+
+const persist = (conversations: Conversation[]) => {
+  clearTimeout(saveTimer)
+  for (const chat of conversations) dirty.add(chat.id)
+  saveTimer = setTimeout(() => flush(conversations), 350)
 }
 
 // Disposer of the in-flight stream, kept where stopStreaming can reach it.
@@ -86,18 +143,46 @@ const titleFrom = (text: string) => {
 
 export const useChatsStore = create<ChatsState>((set, get) => ({
   conversations: [],
+  index: [],
   activeId: null,
 
   hydrate: async () => {
     try {
-      const saved = await bridge.storeGet<Conversation[]>(CHATS_KEY)
-      if (Array.isArray(saved) && saved.length) {
-        const kept = settlePending(withMessages(saved))
-        if (kept.length > 0) set({ conversations: kept, activeId: kept[0].id })
+      // One-time migration from the old single blob. The legacy key is deleted
+      // afterwards, so its cost is paid exactly once and not on every launch.
+      const legacy = await bridge.storeGet<unknown>(LEGACY_KEY)
+      if (Array.isArray(legacy) && legacy.length) {
+        const plan = planMigration(legacy)
+        const rebuilt = plan.index.map((summary) => hydrate(summary, plan.messages[summary.id] ?? []))
+        for (const chat of rebuilt) dirty.add(chat.id)
+        flush(rebuilt)
+        for (const id of plan.dropped) dirty.delete(id)
+        await bridge.storeDelete(LEGACY_KEY).catch(() => {})
       }
+
+      const index = await bridge.storeGet<ChatSummary[]>(INDEX_KEY)
+      if (!Array.isArray(index) || !index.length) return
+
+      // Only the conversation about to be seen is loaded. The rest stay on disk
+      // until they are opened, so launch costs the index, not the history.
+      const first = index[0]
+      const messages = (await bridge.storeGet<ChatMessage[]>(conversationKey(first.id)).catch(() => null)) ?? []
+      set({ index, conversations: [settlePending([hydrate(first, messages)])[0]], activeId: first.id })
     } catch {
-      // fresh install
+      // fresh install, or an unreadable store — start empty rather than trap
     }
+  },
+
+  /** Load a conversation's messages the first time it is opened. */
+  openChat: async (id) => {
+    set({ activeId: id })
+    if (get().conversations.some((c) => c.id === id)) return
+    const summary = get().index.find((row) => row.id === id)
+    if (!summary) return
+    const messages = (await bridge.storeGet<ChatMessage[]>(conversationKey(id)).catch(() => null)) ?? []
+    set((state) => ({
+      conversations: [settlePending([hydrate(summary, messages)])[0], ...state.conversations],
+    }))
   },
 
   createChat: (mode = 'chat', projectId = null) => {
@@ -117,7 +202,7 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
     return chat.id
   },
 
-  selectChat: (id) => set({ activeId: id }),
+  selectChat: (id) => { void get().openChat(id) },
 
   renameChat: (id, title) =>
     set((state) => ({

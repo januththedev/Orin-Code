@@ -113,3 +113,46 @@ shipping a known non-functional placeholder or removing a sandbox:
 Stage 3 (unify Connectors + MCP), stage 5 (sub-agents + background tasks),
 stage 6 (in-app browser), and an always-on-top OS pet window. All four are
 unstarted.
+
+---
+
+## Update: the source is now vendored
+
+`vendor/zcode-src` is a **git submodule** pinned to upstream `29628c9a`
+(v3.14.3) — 7,061 files, the real source, unmodified.
+
+It is a submodule rather than committed files on purpose:
+
+- Orin Code's own history stays readable instead of being buried under 7,000
+  imported files.
+- Updating is `git submodule update --remote` and a tag bump, not a merge of
+  someone else's commits.
+- The commit that pins it is a real, auditable reference to upstream state.
+
+Apache-2.2 obligations are unchanged and still met: `LICENSE`, `NOTICE.md` and
+`THIRD-PARTY-NOTICES.md` are kept verbatim in `vendor/zcode/`, `MODIFICATIONS.md`
+states what Orin changed, no Z.ai or ZCode mark appears in the product, and
+five tests fail the build if any of that rots.
+
+### Building it
+
+ZCode is its own pnpm workspace and is **not** part of Orin Code's build. It
+pins **Node 24.14.0** and **pnpm 10.33.2** (see its `mise.toml`):
+
+```bash
+cd vendor/zcode-src
+corepack enable
+pnpm bootstrap
+pnpm dev        # or: pnpm build
+```
+
+Orin Code builds and tests independently and does not depend on this tree, so a
+ZCode build failure cannot break the Orin Code installer pipeline.
+
+### Still to do with it
+
+The submodule is the *complete project*, present and pinned. Porting its
+surfaces into Orin Code's own runtime is a separate piece of work: ZCode is
+Electron, Orin Code is Tauri, so that is a port between runtimes rather than a
+rebrand. Stages 3, 5 and 6, and the always-on-top OS pet window, remain
+unstarted.

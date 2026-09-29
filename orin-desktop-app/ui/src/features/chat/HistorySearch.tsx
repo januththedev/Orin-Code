@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { MessageSquare, Search, Trash2 } from 'lucide-react'
-import type { Conversation } from '../../stores/chatsStore'
 import { useChatsStore } from '../../stores/chatsStore'
+import type { ChatSummary } from '../../stores/chatStoreModel'
 import { useUiStore } from '../../stores/uiStore'
 import { ContextMenu, type ContextMenuItem } from '../../components/ContextMenu'
 import { Modal } from '../../components/Modal'
@@ -56,14 +56,13 @@ function relativeTime(iso: string): string {
   return new Date(time).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
 }
 
-function snippetOf(chat: Conversation): string {
-  const firstUser = chat.messages.find((m) => m.role === 'user')
-  const source = firstUser?.content ?? chat.messages[0]?.content ?? ''
-  const clean = source.replace(/\s+/g, ' ').trim()
-  return clean.length > 92 ? `${clean.slice(0, 92)}…` : clean || 'Empty conversation'
+function snippetOf(chat: ChatSummary): string {
+  const clean = chat.preview.replace(/\s+/g, ' ').trim()
+  if (!clean) return chat.messageCount === 0 ? 'Empty conversation' : 'No preview'
+  return clean.length > 92 ? `${clean.slice(0, 92)}…` : clean
 }
 
-function groupOf(chat: Conversation): GroupName {
+function groupOf(chat: ChatSummary): GroupName {
   if (chat.pinned) return 'Pinned'
   const updated = new Date(chat.updatedAt)
   const startOfToday = new Date()
@@ -75,7 +74,7 @@ function groupOf(chat: Conversation): GroupName {
 }
 
 interface Row {
-  chat: Conversation
+  chat: ChatSummary
   group: GroupName
   score: number
 }
@@ -86,7 +85,10 @@ interface Row {
 
 /** Searchable history modal. The app shell decides when to open it (no global hotkey here). */
 export function HistorySearch({ open, onClose }: HistorySearchProps) {
-  const conversations = useChatsStore((state) => state.conversations)
+  // Search runs over the index, not the loaded conversations. That covers
+  // *every* chat rather than only the ones opened this session, and it never
+  // touches a message body to do it.
+  const index = useChatsStore((state) => state.index)
   const selectChat = useChatsStore((state) => state.selectChat)
   const deleteChat = useChatsStore((state) => state.deleteChat)
   const setView = useUiStore((state) => state.setView)
@@ -104,7 +106,7 @@ export function HistorySearch({ open, onClose }: HistorySearchProps) {
   }, [open])
 
   const rows = useMemo<Row[]>(() => {
-    const scored = conversations.map((chat) => {
+    const scored = index.map((chat) => {
       const titleScore = fuzzyScore(query, chat.title)
       const snippetScore = query ? fuzzyScore(query, snippetOf(chat)) : 0
       const score = Math.max(titleScore, snippetScore * 0.6)
@@ -116,7 +118,7 @@ export function HistorySearch({ open, onClose }: HistorySearchProps) {
         b.score - a.score || new Date(b.chat.updatedAt).getTime() - new Date(a.chat.updatedAt).getTime(),
     )
     return matched
-  }, [conversations, query])
+  }, [index, query])
 
   const grouped = useMemo(() => {
     const map = new Map<GroupName, Row[]>()
@@ -157,7 +159,7 @@ export function HistorySearch({ open, onClose }: HistorySearchProps) {
   }
 
   const deleteAll = () => {
-    const all = useChatsStore.getState().conversations.map((c) => c.id)
+    const all = useChatsStore.getState().index.map((c) => c.id)
     for (const id of all) deleteChat(id)
     toast('info', 'History cleared', `${all.length} conversation${all.length === 1 ? '' : 's'} deleted`)
   }
