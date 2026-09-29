@@ -84,6 +84,19 @@ jobs:
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
             Write-Host "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. The updater package will be unsigned and the in-app updater will refuse it. Set the repository secret to enable in-app updates."
           }
+          # With a pubkey in tauri.conf.json, the Tauri CLI refuses to build
+          # updater artifacts unless a private key is also present, which would
+          # take the installer down with it. Without the secret, drop the updater
+          # configuration for this build only: the installer still ships, and the
+          # absence of an updater is a known limitation rather than a failure.
+          if ([string]::IsNullOrEmpty($env:ORIN_UPDATER_KEY)) {
+            $conf = 'orin-desktop-app/src-tauri/tauri.conf.json'
+            $cfg = Get-Content $conf -Raw | ConvertFrom-Json
+            $cfg.bundle.PSObject.Properties.Remove('createUpdaterArtifacts')
+            if ($cfg.plugins) { $cfg.plugins.PSObject.Properties.Remove('updater') }
+            $cfg | ConvertTo-Json -Depth 20 | Set-Content $conf -Encoding utf8
+            Write-Host "::warning::No updater key. Building the installer without updater artifacts; the in-app updater is disabled for this build."
+          }
           npm run app:build --prefix orin-desktop-app
 
       # Authenticode runs after the build, because the binaries must exist first.
