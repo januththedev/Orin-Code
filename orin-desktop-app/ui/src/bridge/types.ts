@@ -132,6 +132,8 @@ export type EventPayloads = {
   'cu-permission': { sessionId: string; promptId: string; title: string; detail: string; destructive: boolean }
   'cu-done': { sessionId: string; summary: string }
   'cu-error': { sessionId: string; error: string }
+  'update-progress': UpdateState
+  'models-refreshed': RefreshReport
   notify: { level: NotifyLevel; title: string; body?: string }
 }
 
@@ -210,4 +212,34 @@ export interface HookStatus {
   digest: string | null
   hooks: Hook[]
   problems: HookProblem[]
+}
+
+/** In-app update state. Mirrors bridge::update::UpdateState. */
+export type UpdatePhase = 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'error'
+
+export interface UpdateState {
+  phase: UpdatePhase
+  version: string | null
+  notes: string | null
+  progress: number
+  error: string | null
+}
+
+export interface ProviderCatalog {
+  models: string[]
+  fetchedAtMs: number
+  lastError: string | null
+  ready: boolean
+}
+
+export interface NewModel {
+  provider: string
+  modelId: string
+}
+
+export interface RefreshReport {
+  catalogs: Record<string, ProviderCatalog>
+  appeared: NewModel[]
+  disappeared: string[]
+  allFailed: boolean
 }
