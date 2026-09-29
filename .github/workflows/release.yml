@@ -97,25 +97,35 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $tag = "${{ github.ref_name }}"
+          $repo = "${{ github.repository }}"
           # A tag pushed without a release would fail here, so create it first.
           # --verify-tag refuses to invent a tag that was not actually pushed.
           gh release view $tag *> $null
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --verify-tag --title "Orin Code $tag" --generate-notes
           }
-          # Resolve the files with PowerShell rather than handing gh a glob. A glob
-          # with no match (this project emits .exe, not .msi) made gh report "no
-          # matches found" and leave the release with zero assets — while the step
-          # still exited 0.
           $files = Get-ChildItem -Path artifacts -Recurse -File |
-                   Where-Object { $_.Extension -in '.exe', '.msi' } |
-                   ForEach-Object { $_.FullName }
+                   Where-Object { $_.Extension -in '.exe', '.msi' }
           if (-not $files) { throw "No installer files found under artifacts/." }
-          $files | ForEach-Object { Write-Host "uploading $_" }
-          gh release upload $tag @files --clobber --repo "${{ github.repository }}"
-          $attached = (gh release view $tag --json assets -q '.assets | length' --repo "${{ github.repository }}").Trim()
+
+          # Upload through the REST API rather than `gh release upload`.
+          # That subcommand glob-expands its own arguments, so on a Windows
+          # runner the absolute path D:\a\... was parsed as a glob and the
+          # upload silently did nothing while the step still exited 0.
+          $releaseId = (gh release view $tag --json id -q .id --repo $repo).Trim()
+          foreach ($f in $files) {
+            $name = [uri]::EscapeDataString($f.Name)
+            Write-Host "uploading $($f.Name)"
+            gh api --method POST `
+              -H "Content-Type: application/octet-stream" `
+              "/repos/$repo/releases/$releaseId/assets?name=$name" `
+              --input $f.FullName *> $null
+            if ($LASTEXITCODE -ne 0) { throw "Upload failed for $($f.Name)" }
+          }
+
+          $attached = (gh release view $tag --json assets -q '.assets | length' --repo $repo).Trim()
           if ([int]$attached -lt 1) { throw "Release $tag has no assets after upload." }
-          gh release view $tag --json url -q .url --repo "${{ github.repository }}"
+          gh release view $tag --json url -q .url --repo $repo
 
   verify-manifest:
     name: installer versions agree
