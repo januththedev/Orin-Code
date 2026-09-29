@@ -323,6 +323,22 @@ async fn run_loop(
         serde_json::from_value(task.history.clone()).unwrap_or_default();
     messages.push(text_message("user", &task.instructions));
 
+    // Workspace lifecycle hooks. Untrusted until the user trusts this exact
+    // file content — see bridge::hooks for why a hook may deny or add context
+    // but may never approve an action.
+    let active_hooks: Vec<super::hooks::Hook> = workspace
+        .as_ref()
+        .and_then(|ws| super::hooks::trusted_hooks(ws.root()))
+        .unwrap_or_default();
+
+    // SessionStart context reaches the model before it plans anything.
+    let start_context = super::hooks::wrap_untrusted(
+        &super::hooks::evaluate(&active_hooks, super::hooks::HookEvent::SessionStart, None).context,
+    );
+    if let Some(context) = start_context {
+        messages.insert(0, text_message("system", &context));
+    }
+
     // Harness record + read-before-edit tracking for this run.
     let mut trajectory = Trajectory::new(workspace.as_ref(), &run_id);
     trajectory.log(

@@ -393,7 +393,7 @@ button {
   border-radius: 50%;
   background: var(--accent-soft);
   color: var(--accent);
-  font-size: 9px;
+  font-size: var(--fs-2xs);
   font-weight: 700;
 }
 

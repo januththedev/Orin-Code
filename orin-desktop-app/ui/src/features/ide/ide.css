@@ -327,7 +327,7 @@
 }
 
 .ide-empty-pane span {
-  font-size: 18px;
+  font-size: var(--fs-lg);
 }
 
 .ide-empty-pane p {
@@ -501,7 +501,7 @@
   white-space: nowrap;
   color: var(--muted-2);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-xs);
 }
 
 .ide-tool-card pre {

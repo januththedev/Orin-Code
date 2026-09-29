@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import { bridge } from '../bridge/client'
+import { clampUiFontSize } from '../design/typeScale'
 
 export type Density = 'comfortable' | 'compact'
 
@@ -61,6 +62,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     const { theme, accent, density, fontSize, codeFont, defaultModelId, defaultMode } = get()
     document.documentElement.dataset.theme = theme
     document.documentElement.style.setProperty('--accent', accent)
+    // The interface type scale is driven by this one custom property. Setting
+    // the root font-size instead would rescale everything the tokens do not
+    // own, which is the failure the scale exists to prevent. The slider used to
+    // be wired to nothing at all.
+    document.documentElement.style.setProperty('--ui-font-size', `${clampUiFontSize(fontSize)}px`)
     bridge
       .storeSet(SETTINGS_KEY, { theme, accent, density, fontSize, codeFont, defaultModelId, defaultMode })
       .catch(() => {})
