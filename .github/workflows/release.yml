@@ -62,6 +62,7 @@ jobs:
       # in-app updater reads. Without a signing key the updater archive is
       # unsigned, and the app's own signature gate refuses it, which is correct.
       - name: Build the installer and updater package
+        id: build
         env:
           # Carried under a different name on purpose. An unset secret expands to
           # an empty string, and the Tauri CLI reads an empty
@@ -79,7 +80,9 @@ jobs:
               $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = $env:ORIN_UPDATER_KEY_PASSWORD
             }
             Write-Host "updater package will be signed"
+            "signed=true" >> $env:GITHUB_OUTPUT
           } else {
+            "signed=false" >> $env:GITHUB_OUTPUT
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY -ErrorAction SilentlyContinue
             Remove-Item Env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD -ErrorAction SilentlyContinue
             Write-Host "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. The updater package will be unsigned and the in-app updater will refuse it. Set the repository secret to enable in-app updates."
@@ -137,19 +140,39 @@ jobs:
       - name: Collect installer artifacts
         id: manifest
         shell: pwsh
+        env:
+          SIGNED: ${{ steps.build.outputs.signed }}
         run: |
           $ErrorActionPreference = 'Stop'
           $out = "artifacts"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          # The installer, the updater archive, and the manifest the updater
-          # reads all ship. Silently shipping a release with no installer is how
-          # this pipeline was broken twice already.
-          $files = Get-ChildItem -Path orin-desktop-app/src-tauri/target/release/bundle -Recurse -File |
-                   Where-Object { $_.Extension -in '.exe', '.msi', '.zip' -or $_.Name -eq 'latest.json' }
-          if (-not $files) { Write-Error "No artifacts produced."; exit 1 }
-          foreach ($f in $files) { Copy-Item $f.FullName -Destination $out -Force }
-          $version = (Get-Content orin-desktop-app/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          $release = "orin-desktop-app/src-tauri/target/release"
+
+          # The installer, its updater signature, and the updater manifest.
+          # .sig was missing from the first version of this filter, which
+          # silently threw away the signature.
+          $installers = Get-ChildItem -Path $release -Recurse -File |
+                        Where-Object { $_.Extension -eq '.exe' -or $_.Extension -eq '.msi' }
+          if (-not $installers) { Write-Error "No installer produced."; exit 1 }
+          $sigs = Get-ChildItem -Path $release -Recurse -File -Filter '*.sig' -ErrorAction SilentlyContinue
+          $manifest = Get-ChildItem -Path $release -Recurse -File -Filter 'latest.json' -ErrorAction SilentlyContinue |
+                      Select-Object -First 1
+
+          foreach ($f in @($installers) + @($sigs)) { Copy-Item $f.FullName -Destination $out -Force }
+
+          # A release that looks updatable but has no manifest points every
+          # installed app at a 404. Fail here rather than ship that.
+          if ($env:SIGNED -eq 'true') {
+            if (-not $manifest) {
+              Write-Error "Signing is configured but tauri produced no latest.json; the in-app updater would break for every user."
+              exit 1
+            }
+            if (-not $sigs) { Write-Error "Signing is configured but no .sig was produced."; exit 1 }
+            Copy-Item $manifest.FullName -Destination $out -Force
+          }
+
           Get-ChildItem $out | ForEach-Object { "{0}`t{1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+          $version = (Get-Content orin-desktop-app/src-tauri/tauri.conf.json | ConvertFrom-Json).version
           "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Upload artifacts
@@ -181,7 +204,7 @@ jobs:
             gh release create "$tag" --verify-tag --title "Orin Code $tag" --generate-notes
           fi
           shopt -s nullglob
-          files=(artifacts/*.exe artifacts/*.msi artifacts/*.zip artifacts/latest.json)
+          files=(artifacts/*.exe artifacts/*.msi artifacts/*.zip artifacts/*.sig artifacts/latest.json)
           if [ ${#files[@]} -eq 0 ]; then echo "::error::no artifacts under artifacts/"; exit 1; fi
           printf 'uploading %s\n' "${files[@]}"
           gh release upload "$tag" "${files[@]}" --clobber
