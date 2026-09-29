@@ -92,7 +92,10 @@ function NavRail() {
   const view = useUiStore((state) => state.view)
   const setView = useUiStore((state) => state.setView)
   const collapsed = useUiStore((state) => state.sidebarCollapsed)
-  const conversations = useChatsStore((state) => state.conversations)
+  // The sidebar reads the index, not the loaded conversations: it is the
+  // small per-chat summary list, so the rail renders without loading any
+  // message bodies.
+  const index = useChatsStore((state) => state.index)
   const activeId = useChatsStore((state) => state.activeId)
   const selectChat = useChatsStore((state) => state.selectChat)
   const createChat = useChatsStore((state) => state.createChat)
@@ -109,7 +112,7 @@ function NavRail() {
     setView('settings')
   }
 
-  const recents = conversations.filter((chat) => !chat.archived).slice(0, 24)
+  const recents = index.filter((chat) => !chat.archived).slice(0, 24)
 
   const goHome = () => setView('home')
 

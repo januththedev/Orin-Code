@@ -103,3 +103,25 @@ test('a non-object byChat blob is discarded instead of throwing', () => {
   }
   assert.deepEqual(normalizeScope('nope'), [])
 })
+
+test('memory survives the split chat storage', async () => {
+  // Chat loading was split into an index plus per-conversation blobs, and a
+  // per-chat memory is keyed by chat id. These two must stay compatible: if a
+  // chat id is not stable across open/close, a user's per-chat memory silently
+  // stops being found.
+  const { readFile } = await import('node:fs/promises')
+  const model = await readFile(new URL('../ui/src/stores/chatStoreModel.ts', import.meta.url), 'utf8')
+  const store = await readFile(new URL('../ui/src/stores/chatsStore.ts', import.meta.url), 'utf8')
+
+  // The index stores ids, not derived ones.
+  assert.match(model, /id: string/, 'the summary must carry the conversation id')
+  assert.match(model, /conversationKey\(id: string\)/, 'a conversation key must be derived from that id')
+
+  // Memory is still looked up by the same chatId the store uses.
+  assert.match(store, /buildMemoryContext\(memory\.global, memory\.byChat\[chatId\]/)
+
+  // Lazy loading must not be reintroduced as "load everything on launch".
+  assert.doesNotMatch(store, /storeGet<Conversation\[\]>\(CHATS_KEY\)/,
+    'launch must not read every message again')
+  assert.match(store, /openChat/, 'conversations must be loadable on demand')
+})

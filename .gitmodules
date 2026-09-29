@@ -1,0 +1,3 @@
+[submodule "vendor/zcode-src"]
+	path = vendor/zcode-src
+	url = https://github.com/zai-org/ZCode.git
