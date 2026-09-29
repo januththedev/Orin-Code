@@ -16,6 +16,8 @@ interface SettingsState {
   cloudSync: boolean
   /** Run phone-confirmed Telegram tasks on this PC (explicit opt-in). */
   phoneTasks: boolean
+  /** Look for app updates in the background at startup. */
+  autoCheckUpdates: boolean
   /** Interface sound cues. Off by default — an app that talks unasked gets muted. */
   sound: boolean
   /** Master volume for those cues, 0–1. */
@@ -36,6 +38,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   defaultMode: 'chat',
   cloudSync: true,
   phoneTasks: false,
+  autoCheckUpdates: true,
   sound: false,
   volume: 0.5,
 

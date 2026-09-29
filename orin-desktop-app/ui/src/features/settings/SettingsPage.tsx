@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { bridge } from '../../bridge/client'
 import { useAllSettings, useSettingsStore } from '../../stores/settingsStore'
 import { HooksSection } from './HooksSection'
+import { UpdatesSection } from './UpdatesSection'
 import { useAuthStore } from '../../stores/authStore'
 import { SettingRow, SettingsLayout, useLocalSection, Toggle } from './SettingsLayout'
 import './settings.css'
@@ -559,6 +560,11 @@ export default function SettingsPage() {
           </tbody>
         </table>
       ),
+    },
+    {
+      id: 'updates',
+      label: 'Updates',
+      content: <UpdatesSection />,
     },
     {
       id: 'account',

@@ -53,6 +53,35 @@ export default function App() {
     }
   }, [hydrateAll])
 
+  // Background update check once per launch.
+  //
+  // Deliberately not awaited, and delayed: the app must be usable immediately
+  // and a network round trip to GitHub must never gate first paint. Nothing is
+  // downloaded here — an available update becomes a toast the user acts on.
+  const autoCheckUpdates = useSettingsStore((s) => s.autoCheckUpdates)
+  useEffect(() => {
+    if (phase !== 'app' || !autoCheckUpdates) return
+    let cancelled = false
+    const timer = setTimeout(() => {
+      bridge
+        .updateCheck()
+        .then((state) => {
+          if (cancelled) return
+          if (state.phase === 'available' && state.version) {
+            useUiStore.getState().toast('info', 'Orin Code update available', `${state.version} — Settings → Updates`)
+          }
+        })
+        .catch(() => {
+          // Offline, rate limited, or the release feed unreachable. None of
+          // those is worth interrupting anyone about.
+        })
+    }, 2500)
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [phase, autoCheckUpdates])
+
   // Stealth check once per launch, after entering the app: new free models
   // on OpenRouter surface as a full-screen announcement (first run per
   // install only establishes the baseline, so no Day-1 spam).

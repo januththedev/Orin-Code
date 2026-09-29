@@ -382,3 +382,11 @@
 .hook-problems { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 5px; }
 .hook-problems li { color: #fca5a5; font-size: var(--fs-sm); }
 .settings-note--warn { color: var(--warn); }
+
+/* in-app updates */
+.updates-section { display: grid; gap: 4px; }
+.update-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.update-progress { position: relative; height: 30px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-raised); overflow: hidden; display: flex; align-items: center; }
+.update-progress-bar { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); border-right: 1px solid var(--accent); transition: width .2s ease; }
+.update-progress span { position: relative; padding: 0 10px; font: var(--fs-sm) var(--font-mono); color: var(--muted); }
+.update-notes { margin: 10px 0 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-raised); color: var(--muted); font: var(--fs-sm)/1.6 var(--font-mono); max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
