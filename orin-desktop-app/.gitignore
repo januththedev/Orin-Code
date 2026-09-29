@@ -24,3 +24,6 @@ src-tauri/gen
 *.suo
 *.sw?
 src-tauri/target/
+
+updater
+updater.*.key

@@ -1,8 +1,8 @@
 name: Orin Code installer
 
-# Produces the actual Windows installer. The existing `orin-desktop.yml`
-# workflow only typechecks, lints, and tests — it never produced a binary, so
-# there was no way to install Orin Code from a release.
+# Produces the actual Windows installer and the updater package. The existing
+# `orin-desktop.yml` workflow only typechecks, lints, and tests — it never
+# produced a binary, so there was no way to install Orin Code from a release.
 on:
   push:
     branches: [main]
@@ -57,28 +57,69 @@ jobs:
       - name: Test Rust bridge
         run: cargo test --manifest-path orin-desktop-app/src-tauri/Cargo.toml
 
-      - name: Build the installer
-        run: npm run app:build --prefix orin-desktop-app
+      # createUpdaterArtifacts is enabled in tauri.conf.json, so this produces the
+      # NSIS package, the updater archive, and latest.json — the file the
+      # in-app updater reads. Without a signing key the updater archive is
+      # unsigned, and the app's own signature gate refuses it, which is correct.
+      - name: Build the installer and updater package
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          npm run app:build --prefix orin-desktop-app
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+            Write-Host "::warning::TAURI_SIGNING_PRIVATE_KEY is not set. The updater package will be unsigned and the in-app updater will refuse it. Set the repository secret to enable in-app updates."
+          }
+
+      # Authenticode runs after the build, because the binaries must exist first.
+      # The certificate is a base64 .pfx in a repository secret; it is written to
+      # the runner's temp directory, used, and deleted in the same step, and it
+      # never enters the repository or the log.
+      - name: Code sign (Windows Authenticode)
+        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pfx = Join-Path $env:RUNNER_TEMP 'code-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
+          # Glob rather than a hardcoded filename: the setup .exe carries the
+          # version in its name, and the version output step runs later.
+          $targets = @()
+          $targets += Get-ChildItem -Path "orin-desktop-app/src-tauri/target/release" -Filter "orin-code.exe" -File -ErrorAction SilentlyContinue
+          $targets += Get-ChildItem -Path "orin-desktop-app/src-tauri/target/release/bundle/nsis" -Filter "*-setup.exe" -File -ErrorAction SilentlyContinue
+          $targets = $targets | Sort-Object FullName -Unique
+          if (-not $targets) { throw "No binaries found to sign." }
+          foreach ($exe in $targets) {
+            # Timestamped, so the signature outlives the certificate's own expiry.
+            & signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $pfx /p $env:WINDOWS_CERTIFICATE_PASSWORD $exe.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed for $($exe.Name)" }
+            Write-Host "signed $($exe.Name)"
+          }
+          Remove-Item -Force $pfx
 
       - name: Collect installer artifacts
-        id: collect
+        id: manifest
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           $out = "artifacts"
           New-Item -ItemType Directory -Force -Path $out | Out-Null
-          $files = Get-ChildItem -Path orin-desktop-app/src-tauri/target/release/bundle -Recurse -File -ErrorAction SilentlyContinue |
-                   Where-Object { $_.Extension -in '.exe', '.msi' }
-          if (-not $files) {
-            Write-Error "No installer was produced. tauri build reported success but the bundle directory is empty."
-            exit 1
-          }
+          # The installer, the updater archive, and the manifest the updater
+          # reads all ship. Silently shipping a release with no installer is how
+          # this pipeline was broken twice already.
+          $files = Get-ChildItem -Path orin-desktop-app/src-tauri/target/release/bundle -Recurse -File |
+                   Where-Object { $_.Extension -in '.exe', '.msi', '.zip' -or $_.Name -eq 'latest.json' }
+          if (-not $files) { Write-Error "No artifacts produced."; exit 1 }
           foreach ($f in $files) { Copy-Item $f.FullName -Destination $out -Force }
-          Get-ChildItem $out | ForEach-Object {
-            "{0}`t{1:N1} MB" -f $_.Name, ($_.Length / 1MB)
-          } | Tee-Object -FilePath "$out/SIZES.txt"
-          "version=$(Get-Content orin-desktop-app/src-tauri/tauri.conf.json | ConvertFrom-Json | Select-Object -ExpandProperty version)" >> $env:GITHUB_OUTPUT
+          $version = (Get-Content orin-desktop-app/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          Get-ChildItem $out | ForEach-Object { "{0}`t{1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
+          "version=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Upload installer
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: orin-code-installer
@@ -86,7 +127,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-      - name: Attach installer to the release
+      - name: Attach artifacts to the release
         if: startsWith(github.ref, 'refs/tags/v')
         # Deliberately bash, not pwsh. `gh release upload` glob-expands its own
         # arguments, and a Windows path (D:\a\...) gets parsed as a glob, so the
@@ -107,8 +148,8 @@ jobs:
             gh release create "$tag" --verify-tag --title "Orin Code $tag" --generate-notes
           fi
           shopt -s nullglob
-          files=(artifacts/*.exe artifacts/*.msi)
-          if [ ${#files[@]} -eq 0 ]; then echo "::error::no installer files under artifacts/"; exit 1; fi
+          files=(artifacts/*.exe artifacts/*.msi artifacts/*.zip artifacts/latest.json)
+          if [ ${#files[@]} -eq 0 ]; then echo "::error::no artifacts under artifacts/"; exit 1; fi
           printf 'uploading %s\n' "${files[@]}"
           gh release upload "$tag" "${files[@]}" --clobber
           attached=$(gh release view "$tag" --json assets -q '.assets | length')
@@ -116,12 +157,12 @@ jobs:
           gh release view "$tag" --json url -q .url
 
   verify-manifest:
-    name: installer versions agree
+    name: release invariants
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-      - name: The app must not ship a version older than its tag
+      - name: Versions and updater config must agree
         run: |
           set -euo pipefail
           app="orin-desktop-app"
@@ -133,4 +174,23 @@ jobs:
             echo "::error::versions disagree — tauri=$tauri pkg=$pkg cargo=$cargo"
             exit 1
           fi
-          echo "All three manifests agree on $tauri."
+          python3 - <<'PY'
+          import json
+          d = json.load(open('orin-desktop-app/src-tauri/tauri.conf.json'))
+          if not d.get('bundle', {}).get('createUpdaterArtifacts'):
+              raise SystemExit('::error::createUpdaterArtifacts is off, so the in-app updater has nothing to install')
+          up = d.get('plugins', {}).get('updater', {})
+          if not up.get('active'):
+              raise SystemExit('::error::the updater plugin is not active')
+          if not up.get('pubkey'):
+              raise SystemExit('::error::the updater has no pubkey, so downloads cannot be verified')
+          if not up.get('endpoints'):
+              raise SystemExit('::error::the updater has no endpoint')
+          print('updater configured and verifiable')
+          PY
+          # The private signing key must never be committed.
+          if git ls-files --error-unmatch orin-desktop-app/updater >/dev/null 2>&1; then
+            echo "::error::the updater PRIVATE key is tracked in git"
+            exit 1
+          fi
+          echo "All release invariants hold for $tauri."

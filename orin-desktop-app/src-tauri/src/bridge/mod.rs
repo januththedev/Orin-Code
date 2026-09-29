@@ -9,11 +9,13 @@ pub mod cu;
 pub mod fs;
 pub mod hooks;
 pub mod mcp;
+pub mod model_refresh;
 pub mod models_fetch;
 pub mod presets;
 pub mod store;
 pub mod sync;
 pub mod telegram;
+pub mod update;
 pub mod term;
 pub mod workspace;
 

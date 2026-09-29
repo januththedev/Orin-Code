@@ -18,6 +18,8 @@ import type {
   McpServer,
   SearchHit,
   HookStatus,
+  UpdateState,
+  RefreshReport,
 } from './types'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -252,6 +254,15 @@ export const bridge = {
   hooksStatus: (): Promise<HookStatus> => invoke('hooks_status'),
   hooksTrust: (): Promise<string> => invoke('hooks_trust'),
   hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
+  // In-app updates. Nothing here ever surfaces a repository URL to the user.
+  updateCheck: (): Promise<UpdateState> => invoke('update_check'),
+  updateInstall: (): Promise<UpdateState> => invoke('update_install'),
+  updateRestart: (): Promise<void> => invoke('update_restart'),
+  onUpdateProgress: (cb: (state: UpdateState) => void) =>
+    listen('update-progress', (state) => cb(state)),
+  onModelsRefreshed: (cb: (report: RefreshReport) => void) =>
+    listen('models-refreshed', (report) => cb(report)),
+  modelsRefresh: (): Promise<RefreshReport> => invoke('models_refresh'),
   readDir: (path: string, depth = 3): Promise<FileNode[]> => invoke('fs_read_dir', { path, depth }),
   readFile: (path: string): Promise<string> => invoke('fs_read_file', { path }),
   writeFile: (path: string, content: string) => invoke<void>('fs_write_file', { path, content }),

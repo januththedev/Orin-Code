@@ -10,6 +10,7 @@ pub fn run() {
             // A second launch should focus the existing window; handled in bridge::init.
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(bridge::AppState::default())
         .setup(|app| {
             bridge::init(app.handle().clone());
@@ -57,6 +58,9 @@ pub fn run() {
             bridge::fs::dialog_pick_folder,
             bridge::fs::workspace_activate,
             bridge::fs::fs_read_dir,
+            bridge::update::update_check,
+            bridge::update::update_install,
+            bridge::update::update_restart,
             bridge::hooks::hooks_status,
             bridge::hooks::hooks_trust,
             bridge::hooks::hooks_revoke,
