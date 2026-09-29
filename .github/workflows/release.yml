@@ -166,31 +166,21 @@ jobs:
         run: |
           set -euo pipefail
           app="orin-desktop-app"
-          tauri=$(python3 -c "import json;print(json.load(open('$app/src-tauri/tauri.conf.json'))['version'])")
-          pkg=$(python3 -c "import json;print(json.load(open('$app/package.json'))['version'])")
+          conf="$app/src-tauri/tauri.conf.json"
+          tauri=$(grep -o '"version"[^,]*' "$conf" | head -1 | cut -d'"' -f4)
+          pkg=$(grep -o '"version"[^,]*' "$app/package.json" | head -1 | cut -d'"' -f4)
           cargo=$(grep -m1 '^version' "$app/src-tauri/Cargo.toml" | cut -d'"' -f2)
           echo "tauri=$tauri pkg=$pkg cargo=$cargo"
           if [ "$tauri" != "$pkg" ] || [ "$tauri" != "$cargo" ]; then
-            echo "::error::versions disagree — tauri=$tauri pkg=$pkg cargo=$cargo"
+            echo "versions disagree - tauri=$tauri pkg=$pkg cargo=$cargo"
             exit 1
           fi
-          python3 - <<'PY'
-          import json
-          d = json.load(open('orin-desktop-app/src-tauri/tauri.conf.json'))
-          if not d.get('bundle', {}).get('createUpdaterArtifacts'):
-              raise SystemExit('::error::createUpdaterArtifacts is off, so the in-app updater has nothing to install')
-          up = d.get('plugins', {}).get('updater', {})
-          if not up.get('active'):
-              raise SystemExit('::error::the updater plugin is not active')
-          if not up.get('pubkey'):
-              raise SystemExit('::error::the updater has no pubkey, so downloads cannot be verified')
-          if not up.get('endpoints'):
-              raise SystemExit('::error::the updater has no endpoint')
-          print('updater configured and verifiable')
-          PY
-          # The private signing key must never be committed.
-          if git ls-files --error-unmatch orin-desktop-app/updater >/dev/null 2>&1; then
-            echo "::error::the updater PRIVATE key is tracked in git"
+          grep -q '"createUpdaterArtifacts": true' "$conf" || { echo "createUpdaterArtifacts is off, so the updater has nothing to install"; exit 1; }
+          grep -q '"updater"' "$conf" || { echo "the updater plugin is not configured"; exit 1; }
+          grep -q '"pubkey"' "$conf" || { echo "the updater has no pubkey, so downloads cannot be verified"; exit 1; }
+          grep -q '"endpoints"' "$conf" || { echo "the updater has no endpoint"; exit 1; }
+          if git ls-files --error-unmatch "$app/updater" >/dev/null 2>&1; then
+            echo "the updater PRIVATE key is tracked in git"
             exit 1
           fi
-          echo "All release invariants hold for $tauri."
+          echo "all release invariants hold for $tauri"
