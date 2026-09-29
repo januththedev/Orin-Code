@@ -89,11 +89,22 @@ jobs:
       - name: Attach installer to the release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
+        # gh does NOT pick up the runner's token on its own — it needs GH_TOKEN
+        # set explicitly. This is the automatic GITHUB_TOKEN, not a stored
+        # secret, and no credential is written into this file.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          # gh ships with the runner and uses the automatic GITHUB_TOKEN, so no
-          # secret is ever written into this file.
-          gh release upload "${{ github.ref_name }}" artifacts/*.exe artifacts/*.msi --clobber
-          gh release view "${{ github.ref_name }}" --json url -q .url
+          $ErrorActionPreference = 'Stop'
+          $tag = "${{ github.ref_name }}"
+          # A tag pushed without a release would fail here, so create it first.
+          # --verify-tag refuses to invent a tag that was not actually pushed.
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --verify-tag --title "Orin Code $tag" --generate-notes
+          }
+          gh release upload $tag artifacts/*.exe artifacts/*.msi --clobber --repo "${{ github.repository }}"
+          gh release view $tag --json url -q .url --repo "${{ github.repository }}"
 
   verify-manifest:
     name: installer versions agree
