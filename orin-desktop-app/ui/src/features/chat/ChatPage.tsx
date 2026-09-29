@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import {
   AlertTriangle,
   Archive,
@@ -215,9 +215,33 @@ function ChatActionsMenu({
 // Message list
 // ---------------------------------------------------------------------------
 
+/** How many messages render at the tail before we need to window. */
+const RENDER_WINDOW = 60
+
+/**
+ * Only the tail of a long conversation is mounted.
+ *
+ * A chat with thousands of messages used to render every one of them on open,
+ * and again on every streamed token. Rendering a window keeps open and stream
+ * cost flat; "show earlier" walks backwards one page at a time.
+ */
+function useMessageWindow(messages: ChatMessage[]) {
+  const [visible, setVisible] = useState(RENDER_WINDOW)
+  // Switching conversations resets the window.
+  useEffect(() => { setVisible(RENDER_WINDOW) }, [messages.length === 0])
+
+  const start = Math.max(0, messages.length - visible)
+  return {
+    windowed: messages.slice(start),
+    hidden: start,
+    showEarlier: () => setVisible((n) => n + RENDER_WINDOW),
+  }
+}
+
 function MessageList({ chatId, messages }: { chatId: string; messages: ChatMessage[] }) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [pinned, setPinned] = useState(true)
+  const { windowed, hidden, showEarlier } = useMessageWindow(messages)
 
   // Switched chats: snap to the latest message.
   useEffect(() => {
@@ -250,7 +274,12 @@ function MessageList({ chatId, messages }: { chatId: string; messages: ChatMessa
   return (
     <div className="message-scroll" ref={scrollRef} onScroll={onScroll}>
       <div className="message-list">
-        {messages.map((message) => (
+        {hidden > 0 && (
+          <button type="button" className="load-earlier" onClick={showEarlier}>
+            Show {Math.min(hidden, RENDER_WINDOW)} earlier {hidden === 1 ? 'message' : 'messages'}
+          </button>
+        )}
+        {windowed.map((message) => (
           <MessageRow key={message.id} message={message} />
         ))}
       </div>
@@ -264,7 +293,15 @@ function MessageList({ chatId, messages }: { chatId: string; messages: ChatMessa
   )
 }
 
-function MessageRow({ message }: { message: ChatMessage }) {
+/**
+ * Each row is memoised on the message's own identity.
+ *
+ * While a reply streams, only the streaming message object is replaced, so every
+ * other row keeps the same reference and skips re-rendering. Without this, one
+ * arriving token re-rendered the entire conversation.
+ */
+const MessageRow = memo(
+  function MessageRow({ message }: { message: ChatMessage }) {
   if (message.role === 'user') {
     return (
       <div className="message-row user">
@@ -292,7 +329,9 @@ function MessageRow({ message }: { message: ChatMessage }) {
       </div>
     </div>
   )
-}
+  },
+  (a, b) => a.message === b.message,
+)
 
 function ThinkingIndicator() {
   return (

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { bridge } from '../../bridge/client'
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useAllSettings, useSettingsStore } from '../../stores/settingsStore'
 import { useAuthStore } from '../../stores/authStore'
 import { SettingRow, SettingsLayout, useLocalSection, Toggle } from './SettingsLayout'
 import './settings.css'
@@ -473,7 +473,9 @@ const SHORTCUTS: Array<[string, string]> = [
 ]
 
 export default function SettingsPage() {
-  const settings = useSettingsStore()
+  // Subscribing to the whole store re-rendered this page on any settings
+  // change, including unrelated keys touched by other screens.
+  const settings = useAllSettings()
   const [sectionId, selectSection] = useLocalSection('general', SETTINGS_SECTION_KEY)
 
   const sections = [

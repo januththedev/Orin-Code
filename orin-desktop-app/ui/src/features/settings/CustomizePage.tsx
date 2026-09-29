@@ -1,4 +1,4 @@
-import { useSettingsStore } from '../../stores/settingsStore'
+import { useAllSettings } from '../../stores/settingsStore'
 import { SettingRow } from './SettingsLayout'
 import { playSound, unlockAudio } from '../../design/sound'
 import './settings.css'
@@ -7,7 +7,7 @@ const ACCENTS = ['#e08a3c', '#d97b4f', '#c9a24b', '#7ba7bc', '#9c8ec9', '#7bc78a
 const CODE_FONTS = ['JetBrains Mono', 'Cascadia Code', 'Consolas', 'Fira Code']
 
 export default function CustomizePage() {
-  const settings = useSettingsStore()
+  const settings = useAllSettings()
 
   return (
     <div className="settings-page">

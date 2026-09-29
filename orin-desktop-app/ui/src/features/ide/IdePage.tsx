@@ -7,40 +7,8 @@ import { useUiStore } from '../../stores/uiStore'
 import { FileExplorer } from './FileExplorer'
 import { TerminalPane } from './TerminalPane'
 import { AiPanel } from './AiPanel'
+import { languageFor } from './languages'
 import './ide.css'
-
-const LANGUAGES: Array<[RegExp, string]> = [
-  [/\.(ts|tsx|mts|cts)$/i, 'typescript'],
-  [/\.(js|jsx|mjs|cjs)$/i, 'javascript'],
-  [/\.(py|pyw)$/i, 'python'],
-  [/\.rs$/i, 'rust'],
-  [/\.go$/i, 'go'],
-  [/\.java$/i, 'java'],
-  [/\.kt$/i, 'kotlin'],
-  [/\.c$/i, 'c'],
-  [/\.(cpp|cc|cxx|h|hpp|hh)$/i, 'cpp'],
-  [/\.cs$/i, 'csharp'],
-  [/\.swift$/i, 'swift'],
-  [/\.rb$/i, 'ruby'],
-  [/\.php$/i, 'php'],
-  [/\.sql$/i, 'sql'],
-  [/\.lua$/i, 'lua'],
-  [/\.(xml|xsl|svg|plist|csproj)$/i, 'xml'],
-  [/\.(vue|svelte|astro)$/i, 'html'],
-  [/\.json$/i, 'json'],
-  [/\.(css|scss|less)$/i, 'css'],
-  [/\.(html?|htm)$/i, 'html'],
-  [/\.(md|markdown)$/i, 'markdown'],
-  [/\.(sh|bash|zsh|ps1)$/i, 'shell'],
-  [/\.(yml|yaml)$/i, 'yaml'],
-  [/\.(toml|ini|cfg|conf)$/i, 'ini'],
-  [/dockerfile[^.]*$/i, 'dockerfile'],
-  [/\.git(ignore|attributes|modules)$/i, 'ini'],
-]
-
-function languageFor(name: string): string {
-  return LANGUAGES.find(([pattern]) => pattern.test(name))?.[1] ?? 'plaintext'
-}
 
 interface OpenTab {
   path: string
