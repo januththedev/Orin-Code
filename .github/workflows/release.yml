@@ -10,6 +10,13 @@ on:
       - 'orin-desktop-app/**'
       - '.github/workflows/release.yml'
     tags: ['v*']
+  # Build the installer on pull requests too. This is the only way the
+  # installer path is verified before it merges — a workflow that only runs
+  # after merge is exactly how a broken installer ships.
+  pull_request:
+    paths:
+      - 'orin-desktop-app/**'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 permissions:
@@ -87,3 +94,23 @@ jobs:
           # secret is ever written into this file.
           gh release upload "${{ github.ref_name }}" artifacts/*.exe artifacts/*.msi --clobber
           gh release view "${{ github.ref_name }}" --json url -q .url
+
+  verify-manifest:
+    name: installer versions agree
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: The app must not ship a version older than its tag
+        run: |
+          set -euo pipefail
+          app="orin-desktop-app"
+          tauri=$(python3 -c "import json;print(json.load(open('$app/src-tauri/tauri.conf.json'))['version'])")
+          pkg=$(python3 -c "import json;print(json.load(open('$app/package.json'))['version'])")
+          cargo=$(grep -m1 '^version' "$app/src-tauri/Cargo.toml" | cut -d'"' -f2)
+          echo "tauri=$tauri pkg=$pkg cargo=$cargo"
+          if [ "$tauri" != "$pkg" ] || [ "$tauri" != "$cargo" ]; then
+            echo "::error::versions disagree — tauri=$tauri pkg=$pkg cargo=$cargo"
+            exit 1
+          fi
+          echo "All three manifests agree on $tauri."
