@@ -1,0 +1,89 @@
+name: Orin Code installer
+
+# Produces the actual Windows installer. The existing `orin-desktop.yml`
+# workflow only typechecks, lints, and tests — it never produced a binary, so
+# there was no way to install Orin Code from a release.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'orin-desktop-app/**'
+      - '.github/workflows/release.yml'
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    name: build NSIS installer
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: orin-desktop-app/package-lock.json
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install renderer dependencies
+        run: npm ci --prefix orin-desktop-app
+
+      - name: Typecheck and lint
+        run: |
+          npm run typecheck --prefix orin-desktop-app
+          npm run lint --prefix orin-desktop-app
+
+      - name: Run renderer tests
+        run: npm run test:ui --prefix orin-desktop-app
+
+      - name: Test Rust bridge
+        run: cargo test --manifest-path orin-desktop-app/src-tauri/Cargo.toml
+
+      - name: Build the installer
+        run: npm run app:build --prefix orin-desktop-app
+
+      - name: Collect installer artifacts
+        id: collect
+        shell: pwsh
+        run: |
+          $out = "artifacts"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $files = Get-ChildItem -Path orin-desktop-app/src-tauri/target/release/bundle -Recurse -File -ErrorAction SilentlyContinue |
+                   Where-Object { $_.Extension -in '.exe', '.msi' }
+          if (-not $files) {
+            Write-Error "No installer was produced. tauri build reported success but the bundle directory is empty."
+            exit 1
+          }
+          foreach ($f in $files) { Copy-Item $f.FullName -Destination $out -Force }
+          Get-ChildItem $out | ForEach-Object {
+            "{0}`t{1:N1} MB" -f $_.Name, ($_.Length / 1MB)
+          } | Tee-Object -FilePath "$out/SIZES.txt"
+          "version=$(Get-Content orin-desktop-app/src-tauri/tauri.conf.json | ConvertFrom-Json | Select-Object -ExpandProperty version)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: orin-code-installer
+          path: artifacts/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Attach installer to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          # gh ships with the runner and uses the automatic GITHUB_TOKEN, so no
+          # secret is ever written into this file.
+          gh release upload "${{ github.ref_name }}" artifacts/*.exe artifacts/*.msi --clobber
+          gh release view "${{ github.ref_name }}" --json url -q .url

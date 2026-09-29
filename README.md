@@ -49,6 +49,30 @@ npm run app:build    # NSIS installer → src-tauri/target/release/bundle/
 
 The amber bolt mark lives at [`assets/orin-mark.svg`](orin-desktop-app/assets/orin-mark.svg); icons are generated via `scripts/generate-icons.mjs`.
 
+### Installing Orin Code
+
+Every tagged release publishes a signed-free NSIS installer. Download
+`Orin Code_<version>_x64-setup.exe` from the
+[release page](https://github.com/januththedev/Orin-Code/releases) and run it.
+
+It installs to `%LOCALAPPDATA%\Programs\Orin Code`, adds a Start Menu entry and
+an uninstaller under *Settings → Apps → Installed apps*. There is no
+machine-wide install and no admin prompt: everything lands under your user
+profile.
+
+The installer is **not code-signed**, so SmartScreen will show
+*"Windows protected your PC"*. Click **More info → Run anyway**. This is
+expected for an unsigned release and is a decision you should make knowing
+that a signed build needs a code-signing certificate, which this repository
+does not carry.
+
+**Requirements:** Windows 10 21H2 or 11, and WebView2 — preinstalled on
+Windows 11 and on any current Windows 10; if the app shows a blank window,
+install the [WebView2 runtime](https://developer.microsoft.com/microsoft-edge/webview2/).
+
+The first launch has no offline mode: you need an Orin account or a provider
+key before the app opens.
+
 ### Orin Code Editor
 
 Prerequisites: Node 20+, Python 3, VS Build Tools.
