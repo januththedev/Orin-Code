@@ -103,7 +103,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             gh release create $tag --verify-tag --title "Orin Code $tag" --generate-notes
           }
-          gh release upload $tag artifacts/*.exe artifacts/*.msi --clobber --repo "${{ github.repository }}"
+          # Resolve the files with PowerShell rather than handing gh a glob. A glob
+          # with no match (this project emits .exe, not .msi) made gh report "no
+          # matches found" and leave the release with zero assets — while the step
+          # still exited 0.
+          $files = Get-ChildItem -Path artifacts -Recurse -File |
+                   Where-Object { $_.Extension -in '.exe', '.msi' } |
+                   ForEach-Object { $_.FullName }
+          if (-not $files) { throw "No installer files found under artifacts/." }
+          $files | ForEach-Object { Write-Host "uploading $_" }
+          gh release upload $tag @files --clobber --repo "${{ github.repository }}"
+          $attached = (gh release view $tag --json assets -q '.assets | length' --repo "${{ github.repository }}").Trim()
+          if ([int]$attached -lt 1) { throw "Release $tag has no assets after upload." }
           gh release view $tag --json url -q .url --repo "${{ github.repository }}"
 
   verify-manifest:
