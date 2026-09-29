@@ -25,6 +25,34 @@
   --accent-soft: rgba(224, 138, 60, 0.14);
   --accent-line: rgba(224, 138, 60, 0.4);
   --on-accent: #221709;
+
+  /* Semantic role names (ported from ZCode's DESIGN.md, Apache-2.0).
+   *
+   * These are aliases, not new colours: they let a component ask for "brand"
+   * or "accent surface" by meaning. The rule from upstream is that brand is for
+   * key emphasis, important links, and active indicators — and never a
+   * full-page background. `colors.ts` documents the icon descriptors, which
+   * deliberately keep their own hues rather than inheriting brand. */
+  --color-brand: var(--accent);
+  --color-brand-hover: var(--accent-hover);
+  --color-accent-surface: var(--accent-soft);
+  --color-accent-line: var(--accent-line);
+  --color-icon-blue: #8ab4d9;
+
+  /* file-type icon descriptors — their own hues, not brand */
+  --icon-source: hsl(32 70% 62%);
+  --icon-header: hsl(24 72% 60%);
+  --icon-config: hsl(210 55% 62%);
+  --icon-docs: hsl(190 50% 58%);
+  --icon-data: hsl(150 45% 55%);
+  --icon-style: hsl(280 45% 66%);
+  --icon-script: hsl(200 60% 62%);
+  --icon-binary: hsl(350 60% 64%);
+  --icon-archive: hsl(45 70% 60%);
+  --icon-test: hsl(120 40% 55%);
+  --icon-image: hsl(320 50% 66%);
+  --icon-lock: hsl(0 45% 60%);
+
   --success: #7bc78a;
   --success-soft: rgba(123, 199, 138, 0.12);
   --warn: #e3a36d;
@@ -41,12 +69,26 @@
   /* type scale (desktop-first) */
   --font-ui: 'Inter', 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', 'Cascadia Code', Consolas, ui-monospace, monospace;
-  --fs-2xs: 10px;
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-base: 13px;
-  --fs-md: 15px;
-  --fs-lg: 17px;
+
+  /* Interface type scale.
+   *
+   * The single source of truth for interface typography. Every UI size below is
+   * derived from --ui-font-size, which is the ONLY thing the appearance setting
+   * is allowed to change — never the root font size. Relative units here would
+   * silently rescale with whatever the root happens to be, which is exactly the
+   * failure this rule exists to prevent.
+   *
+   * Roles: xl = first-level headings, lg = second-level, base = body and
+   * controls, caption = compact supporting copy, sm = secondary/helper, xs =
+   * badges and very weak metadata, 2xs = restricted floor. */
+  --ui-font-size: 14px;
+  --fs-2xs: 9px;    /* restricted: below the xs floor, use sparingly */
+  --fs-xs: 10px;    /* badges, counters, very weak metadata */
+  --fs-sm: 12px;    /* secondary copy, helper text, inline code */
+  --fs-caption: 13px; /* compact supporting copy, one step below body */
+  --fs-base: 14px;  /* body, buttons, section titles */
+  --fs-md: 16px;    /* second-level headings */
+  --fs-lg: 18px;    /* first-level headings */
   --fs-xl: 21px;
   --fs-hero: 26px;
 

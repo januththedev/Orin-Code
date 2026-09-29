@@ -17,6 +17,7 @@ import type {
   ProviderInfo,
   McpServer,
   SearchHit,
+  HookStatus,
 } from './types'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -246,6 +247,11 @@ export const bridge = {
   // files
   pickFolder: (): Promise<FolderPick | null> => invoke('dialog_pick_folder'),
   workspaceActivate: (root: string): Promise<string> => invoke('workspace_activate', { root }),
+  // Workspace hooks. Trust is bound to the file's content digest, so editing
+  // the file after approving it silently revokes trust.
+  hooksStatus: (): Promise<HookStatus> => invoke('hooks_status'),
+  hooksTrust: (): Promise<string> => invoke('hooks_trust'),
+  hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
   readDir: (path: string, depth = 3): Promise<FileNode[]> => invoke('fs_read_dir', { path, depth }),
   readFile: (path: string): Promise<string> => invoke('fs_read_file', { path }),
   writeFile: (path: string, content: string) => invoke<void>('fs_write_file', { path, content }),

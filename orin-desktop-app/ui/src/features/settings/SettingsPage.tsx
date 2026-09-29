@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { bridge } from '../../bridge/client'
 import { useAllSettings, useSettingsStore } from '../../stores/settingsStore'
+import { HooksSection } from './HooksSection'
 import { useAuthStore } from '../../stores/authStore'
 import { SettingRow, SettingsLayout, useLocalSection, Toggle } from './SettingsLayout'
 import './settings.css'
@@ -525,6 +526,7 @@ export default function SettingsPage() {
           <SettingRow label="Tool permissions" hint="File writes and commands always ask before running.">
             <span className="setting-hint">Approved per session from the AI panel.</span>
           </SettingRow>
+          <HooksSection />
         </div>
       ),
     },

@@ -178,3 +178,36 @@ export interface McpServer {
   url: string
   hasKey: boolean
 }
+
+/** Session lifecycle hooks (ported from ZCode's hook model, Apache-2.0).
+ *  A hook may deny a tool or add context. It may never approve one — that would
+ *  defeat the run-bound approvals the agent depends on. */
+export type HookEvent =
+  | 'sessionStart'
+  | 'userPromptSubmit'
+  | 'preToolUse'
+  | 'permissionRequest'
+  | 'postToolUse'
+  | 'postToolUseFailure'
+  | 'stop'
+
+export interface Hook {
+  event: HookEvent
+  name: string
+  matcher?: string
+  deny?: string
+  context?: string
+}
+
+export interface HookProblem {
+  level: string
+  message: string
+}
+
+export interface HookStatus {
+  present: boolean
+  trusted: boolean
+  digest: string | null
+  hooks: Hook[]
+  problems: HookProblem[]
+}
