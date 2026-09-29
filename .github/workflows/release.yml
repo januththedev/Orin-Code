@@ -76,14 +76,20 @@ jobs:
       # The certificate is a base64 .pfx in a repository secret; it is written to
       # the runner's temp directory, used, and deleted in the same step, and it
       # never enters the repository or the log.
+      # Guarded inside the script rather than with `if: ${{ secrets... }}`:
+      # a step-level condition reading the secrets context is rejected outright
+      # when the workflow also runs on pull_request.
       - name: Code sign (Windows Authenticode)
-        if: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 != '' }}
         shell: pwsh
         env:
           WINDOWS_CERTIFICATE_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_BASE64 }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $ErrorActionPreference = 'Stop'
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_BASE64)) {
+            Write-Host "::warning::WINDOWS_CERTIFICATE_BASE64 is not set; this build is unsigned."
+            exit 0
+          }
           $pfx = Join-Path $env:RUNNER_TEMP 'code-signing.pfx'
           [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_BASE64))
           # Glob rather than a hardcoded filename: the setup .exe carries the
