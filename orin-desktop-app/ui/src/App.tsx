@@ -8,6 +8,7 @@ import { useAuthStore } from './stores/authStore'
 import { useSettingsStore } from './stores/settingsStore'
 import { useProjectsStore } from './stores/projectsStore'
 import { StealthModal } from './components/StealthModal'
+import { PetBar } from './features/pets/PetBar'
 
 type Phase = 'booting' | 'welcome' | 'app'
 
@@ -32,11 +33,13 @@ export default function App() {
         const ids = providers.length > 0
           ? providers.filter((p) => p.keyRequired).map((p) => p.id)
           : ['anthropic', 'openai_compat']
-        for (const id of [...ids, 'openai_compat']) {
-          try {
-            if (await bridge.providerHasKey(id)) { hasKey = true; break }
-          } catch { /* try next slot */ }
-        }
+        const slots = [...new Set([...ids, 'openai_compat'])]
+        // These were awaited one at a time, so boot cost a full IPC round trip
+        // per provider before the splash could clear. Probe them together.
+        const found = await Promise.all(
+          slots.map((id) => bridge.providerHasKey(id).catch(() => false)),
+        )
+        hasKey = found.some(Boolean)
       } catch {
         hasKey = false
       }
@@ -157,6 +160,7 @@ export default function App() {
   return (
     <div className="app-root">
       <Layout />
+      <PetBar />
       {stealth.length > 0 && (
         <StealthModal models={stealth} onUse={useStealth} onDismiss={() => setStealth([])} />
       )}

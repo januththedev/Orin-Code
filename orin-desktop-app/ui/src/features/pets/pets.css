@@ -1,0 +1,57 @@
+/* Always-on-top status pets.
+   Fixed, never draggable-by-accident, and small enough to ignore until it
+   changes. The strip sits bottom-right so it clears the sidebar and the
+   jump-to-latest button. */
+
+.pet-bar {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 13px 7px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel-overlay) 92%, transparent);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.34);
+  color: var(--text);
+  font: 12.5px/1 var(--font-sans);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .2s, transform .2s;
+}
+
+.pet-bar:hover { border-color: var(--accent); transform: translateY(-1px); }
+.pet-bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.pet-face { flex: none; }
+.pet-face .pet-mark { font: 700 9px var(--font-mono); fill: var(--warn); }
+
+.pet-name { font-weight: 700; letter-spacing: -.01em; }
+.pet-label { color: var(--muted); max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.pet-pulse {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+  margin-left: 2px;
+  animation: pet-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pet-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: .35; transform: scale(.82); }
+}
+
+/* Mood tinting. Error and waiting should read instantly, without reading text. */
+.pet-bar[data-mood='error'] { border-color: rgba(248, 113, 113, .55); }
+.pet-bar[data-mood='waiting'] { border-color: rgba(227, 163, 109, .5); }
+.pet-bar[data-mood='working'] { border-color: var(--accent-line); }
+.pet-bar[data-mood='happy'] { border-color: rgba(123, 199, 138, .5); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-pulse { animation: none; }
+  .pet-bar:hover { transform: none; }
+}

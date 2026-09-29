@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 import { bridge } from '../bridge/client'
 
 export type Density = 'comfortable' | 'compact'
@@ -66,3 +67,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     void import('./cloudSync').then(({ scheduleCloudSync }) => scheduleCloudSync())
   },
 }))
+
+/**
+ * Read every setting without re-rendering on unrelated changes.
+ *
+ * `useSettingsStore()` with no argument subscribes to the whole store, so the
+ * component re-renders whenever anything changes. `useShallow` makes the
+ * returned object reference-stable when no field actually changed, which is
+ * what a settings screen wants: it re-renders when a setting is edited, not
+ * when some other key is touched.
+ */
+export function useAllSettings(): SettingsState {
+  return useSettingsStore(useShallow((state) => state))
+}
