@@ -23,3 +23,4 @@ src-tauri/gen
 .DS_Store
 *.suo
 *.sw?
+src-tauri/target/
