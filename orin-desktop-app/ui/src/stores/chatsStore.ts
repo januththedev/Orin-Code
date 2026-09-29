@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { bridge } from '../bridge/client'
 import type { AiMessage, MessagePart } from '../bridge/types'
 import { useSettingsStore } from './settingsStore'
-import { buildMemoryContext, useMemoryStore } from './memoryStore'
+import { memorySection } from './memoryStore'
 import {
   INDEX_KEY,
   LEGACY_KEY,
@@ -263,11 +263,10 @@ export const useChatsStore = create<ChatsState>((set, get) => ({
     const history: AiMessage[] = chat.messages
       .slice(-16)
       .map((m) => ({ role: m.role, parts: [{ type: 'text', text: m.content }] }))
-    // Memory rides along as a system message: global first, then this chat's
-    // own. Read straight off the store rather than through a hook so the send
-    // path stays a plain function and does not re-render on every keystroke.
-    const memory = useMemoryStore.getState()
-    const memoryContext = buildMemoryContext(memory.global, memory.byChat[chatId] ?? [])
+    // Memory rides along as a system section, exactly as ZCode injects it.
+    // Read straight off the store rather than through a hook so the send path
+    // stays a plain function and does not re-render on every keystroke.
+    const memoryContext = memorySection()
     const messages: AiMessage[] = [
       ...(memoryContext
         ? [{ role: 'system' as const, parts: [{ type: 'text' as const, text: memoryContext }] }]

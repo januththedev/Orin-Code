@@ -18,6 +18,7 @@ import type {
   McpServer,
   SearchHit,
   HookStatus,
+  MemoryFile,
   UpdateState,
   RefreshReport,
 } from './types'
@@ -254,6 +255,13 @@ export const bridge = {
   hooksStatus: (): Promise<HookStatus> => invoke('hooks_status'),
   hooksTrust: (): Promise<string> => invoke('hooks_trust'),
   hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
+  // File-based memory, laid out the way ZCode lays it out.
+  memoryDir: (): Promise<string> => invoke('memory_dir'),
+  memoryList: (): Promise<MemoryFile[]> => invoke('memory_list'),
+  memoryRead: (fileName: string): Promise<MemoryFile> => invoke('memory_read', { fileName }),
+  memoryWrite: (fileName: string, content: string): Promise<MemoryFile> =>
+    invoke('memory_write', { fileName, content }),
+  memoryDelete: (fileName: string): Promise<boolean> => invoke('memory_delete', { fileName }),
   // In-app updates. Nothing here ever surfaces a repository URL to the user.
   updateCheck: (): Promise<UpdateState> => invoke('update_check'),
   updateInstall: (): Promise<UpdateState> => invoke('update_install'),

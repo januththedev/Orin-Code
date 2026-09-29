@@ -1,148 +1,103 @@
 import { create } from 'zustand'
 import { bridge } from '../bridge/client'
 import {
-  MAX_ENTRIES_PER_SCOPE,
-  buildMemoryContext,
-  isValidMemory,
-  normalizeByChat,
-  normalizeScope,
-  type MemoryEntry,
-  type MemoryScope,
+  buildMemorySection,
+  isValidName,
+  parseMemory,
+  serialiseMemory,
+  toSlug,
+  type Memory,
 } from '../features/memory/memoryModel'
 
 /**
- * Memory has two scopes, and the difference is the whole point of the page.
+ * Memory, backed by files in the same place ZCode keeps them.
  *
- *   Global   — follows you into every chat. Preferences, who you are, how you
- *              like answers written. This is what makes a new chat feel like it
- *              already knows you.
- *   Per chat — belongs to one conversation. Its topic, its decisions, the
- *              detail you would not want dragged into an unrelated thread.
+ * The previous implementation kept memories in a key in the app's key-value
+ * store. That was the wrong place: ZCode stores memories as one file per fact
+ * under `<storage>/memories/projects/<slug>-<hash>/memory/`, and a memory that
+ * means something different in each product is not a shared memory.
  *
- * Memory is stored through the same bridge store as chats, so it lands in the
- * same encrypted local store and follows the existing cloud sync. The rules
- * live in features/memory/memoryModel.ts so they can be tested without the app.
+ * This store is a cache over that directory. The files are the source of
+ * truth, so an edit made outside the app is picked up on the next read, and
+ * deleting a file in the app deletes it for real.
  */
 
-export type { MemoryEntry, MemoryScope }
-export { buildMemoryContext }
-
-const STORAGE_KEY = 'memory'
-
-const now = () => new Date().toISOString()
-const uid = () => crypto.randomUUID()
-
-export interface MemoryState {
-  /** Applies to every chat. */
-  global: MemoryEntry[]
-  /** chatId → entries that only apply to that chat. */
-  byChat: Record<string, MemoryEntry[]>
-  hydrate: () => Promise<void>
-  add: (content: string, scope: MemoryScope, chatId?: string | null) => void
-  update: (id: string, content: string, scope: MemoryScope, chatId?: string | null) => void
-  remove: (id: string, scope: MemoryScope, chatId?: string | null) => void
-  /** Move a chat memory up to global. */
-  promote: (id: string, chatId: string | null) => void
-  /** Move a global memory down into one chat. */
-  demote: (id: string, chatId: string) => void
-  clearScope: (scope: MemoryScope, chatId?: string | null) => void
-  forChat: (chatId: string | null) => MemoryEntry[]
+export interface MemoryProblem {
+  file: string
+  field: string
+  message: string
 }
 
-let saveTimer: ReturnType<typeof setTimeout> | undefined
-const persist = (global: MemoryEntry[], byChat: Record<string, MemoryEntry[]>) => {
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    void bridge.storeSet(STORAGE_KEY, { global, byChat }).catch(() => {})
-    void import('./cloudSync').then(({ scheduleCloudSync }) => scheduleCloudSync()).catch(() => {})
-  }, 350)
+interface MemoryState {
+  /** Parsed memories, sorted by name. */
+  memories: Memory[]
+  /** Files that failed to parse, so they can be shown rather than hidden. */
+  problems: MemoryProblem[]
+  /** Where the files live, for display. */
+  directory: string
+  loading: boolean
+  /** True once a load has completed, so the UI is not just "loading" forever. */
+  loaded: boolean
+  reload: () => Promise<void>
+  save: (memory: Memory) => Promise<void>
+  remove: (name: string) => Promise<void>
+  /** The system section, or null when there is nothing to say. */
+  section: () => string | null
 }
 
 export const useMemoryStore = create<MemoryState>((set, get) => ({
-  global: [],
-  byChat: {},
+  memories: [],
+  problems: [],
+  directory: '',
+  loading: false,
+  loaded: false,
 
-  hydrate: async () => {
-    const raw = await bridge.storeGet<{ global?: unknown; byChat?: unknown }>(STORAGE_KEY).catch(() => null)
-    if (!raw || typeof raw !== 'object') return
-    set({ global: normalizeScope(raw.global), byChat: normalizeByChat(raw.byChat) })
-  },
-
-  add: (content, scope, chatId) => {
-    if (!isValidMemory(content)) return
-    const entry: MemoryEntry = { id: uid(), content: content.trim(), createdAt: now(), updatedAt: now(), source: scope === 'chat' ? 'chat' : 'user' }
-    if (scope === 'global') {
-      const global = [entry, ...get().global].slice(0, MAX_ENTRIES_PER_SCOPE)
-      set({ global })
-      persist(global, get().byChat)
-      return
+  reload: async () => {
+    set({ loading: true })
+    try {
+      const [directory, files] = await Promise.all([
+        bridge.memoryDir().catch(() => ''),
+        bridge.memoryList().catch(() => [] as Awaited<ReturnType<typeof bridge.memoryList>>),
+      ])
+      const memories: Memory[] = []
+      const problems: MemoryProblem[] = []
+      for (const file of files) {
+        const { memory, problems: fileProblems } = parseMemory(file.content, file.name)
+        if (memory) {
+          memories.push({ ...memory, updatedAt: file.updatedAtMs ? new Date(file.updatedAtMs).toISOString() : null })
+        }
+        for (const problem of fileProblems) problems.push({ file: file.name, ...problem })
+      }
+      memories.sort((a, b) => a.name.localeCompare(b.name))
+      set({ memories, problems, directory, loading: false, loaded: true })
+    } catch {
+      // No workspace, or no memory directory yet. That is a normal state, not
+      // an error, and the page renders an empty memory.
+      set({ memories: [], problems: [], loading: false, loaded: true })
     }
-    if (!chatId) return
-    const byChat = { ...get().byChat, [chatId]: [entry, ...(get().byChat[chatId] ?? [])].slice(0, MAX_ENTRIES_PER_SCOPE) }
-    set({ byChat })
-    persist(get().global, byChat)
   },
 
-  update: (id, content, scope, chatId) => {
-    if (!isValidMemory(content)) return
-    const trim = content.trim()
-    if (scope === 'global') {
-      const global = get().global.map((e) => (e.id === id ? { ...e, content: trim, updatedAt: now() } : e))
-      set({ global })
-      persist(global, get().byChat)
-      return
-    }
-    if (!chatId) return
-    const list = get().byChat[chatId] ?? []
-    const byChat = { ...get().byChat, [chatId]: list.map((e) => (e.id === id ? { ...e, content: trim, updatedAt: now() } : e)) }
-    set({ byChat })
-    persist(get().global, byChat)
+  save: async (memory) => {
+    const name = isValidName(memory.name) ? memory.name : toSlug(memory.name)
+    if (!name) throw new Error('That memory needs a name.')
+    await bridge.memoryWrite(`${name}.md`, serialiseMemory({ ...memory, name }))
+    await get().reload()
   },
 
-  remove: (id, scope, chatId) => {
-    if (scope === 'global') {
-      const global = get().global.filter((e) => e.id !== id)
-      set({ global })
-      persist(global, get().byChat)
-      return
-    }
-    if (!chatId) return
-    const byChat = { ...get().byChat, [chatId]: (get().byChat[chatId] ?? []).filter((e) => e.id !== id) }
-    if (!byChat[chatId].length) delete byChat[chatId]
-    set({ byChat })
-    persist(get().global, byChat)
+  remove: async (name) => {
+    await bridge.memoryDelete(`${name}.md`)
+    await get().reload()
   },
 
-  promote: (id, chatId) => {
-    if (!chatId) return
-    const entry = (get().byChat[chatId] ?? []).find((e) => e.id === id)
-    if (!entry) return
-    get().remove(id, 'chat', chatId)
-    get().add(entry.content, 'global')
-  },
-
-  demote: (id, chatId) => {
-    const entry = get().global.find((e) => e.id === id)
-    if (!entry) return
-    get().remove(id, 'global')
-    get().add(entry.content, 'chat', chatId)
-  },
-
-  clearScope: (scope, chatId) => {
-    if (scope === 'global') {
-      set({ global: [] })
-      persist([], get().byChat)
-      return
-    }
-    if (!chatId) return
-    const byChat = { ...get().byChat }
-    delete byChat[chatId]
-    set({ byChat })
-    persist(get().global, byChat)
-  },
-
-  forChat: (chatId) => {
-    const chat = chatId ? get().byChat[chatId] ?? [] : []
-    return [...get().global, ...chat]
-  },
+  section: () => buildMemorySection(get().memories),
 }))
+
+/**
+ * Read the memory block for a send without subscribing the caller to the store.
+ *
+ * The send path is a plain function; reading through the hook would re-render
+ * the composer on every memory change.
+ */
+export function memorySection(): string | null {
+  return buildMemorySection(useMemoryStore.getState().memories)
+}

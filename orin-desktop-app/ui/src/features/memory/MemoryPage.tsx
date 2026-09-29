@@ -1,120 +1,74 @@
-import { useEffect, useMemo, useState } from 'react'
-import { useMemoryStore, type MemoryEntry, type MemoryScope } from '../../stores/memoryStore'
-import { useChatsStore } from '../../stores/chatsStore'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemoryStore } from '../../stores/memoryStore'
 import { useUiStore } from '../../stores/uiStore'
 import { EmptyState } from '../../components/EmptyState'
+import { Button } from '../../components/Button'
+import {
+  MEMORY_TYPES,
+  REQUIRES_RATIONALE,
+  toSlug,
+  type Memory,
+  type MemoryType,
+} from './memoryModel'
 import './memory.css'
 
 /**
- * Memory, in two scopes.
+ * Memory, kept where ZCode keeps it: one file per fact, in
+ * `<storage>/memories/projects/<slug>-<hash>/memory/`.
  *
- * The left column is memory that follows you everywhere. The right is memory
- * belonging to one conversation, with a picker so you can switch threads. The
- * point of the split is that standing context and thread context are different
- * things, and mixing them is how an assistant ends up quoting one project's
- * decisions into an unrelated conversation.
+ * The form mirrors ZCode's memory format — a kebab-case name, a one-line
+ * description, a type, and `**Why:**` / `**How to apply:**` for the types that
+ * need a rationale — because a memory you cannot read the same way in both
+ * products is not a shared memory.
  */
 export default function MemoryPage() {
-  const global = useMemoryStore((s) => s.global)
-  const byChat = useMemoryStore((s) => s.byChat)
-  const add = useMemoryStore((s) => s.add)
-  const update = useMemoryStore((s) => s.update)
+  const memories = useMemoryStore((s) => s.memories)
+  const problems = useMemoryStore((s) => s.problems)
+  const directory = useMemoryStore((s) => s.directory)
+  const loading = useMemoryStore((s) => s.loading)
+  const loaded = useMemoryStore((s) => s.loaded)
+  const reload = useMemoryStore((s) => s.reload)
+  const save = useMemoryStore((s) => s.save)
   const remove = useMemoryStore((s) => s.remove)
-  const promote = useMemoryStore((s) => s.promote)
-  const demote = useMemoryStore((s) => s.demote)
-  const clearScope = useMemoryStore((s) => s.clearScope)
-  const hydrate = useMemoryStore((s) => s.hydrate)
-
-  const conversations = useChatsStore((s) => s.conversations)
   const setView = useUiStore((s) => s.setView)
+  const toast = useUiStore((s) => s.toast)
 
-  const [chatId, setChatId] = useState<string | null>(null)
-  const [draftGlobal, setDraftGlobal] = useState('')
-  const [draftChat, setDraftChat] = useState('')
-  const [editing, setEditing] = useState<{ id: string; scope: MemoryScope; chatId: string | null; text: string } | null>(null)
+  const [editing, setEditing] = useState<Memory | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState('')
 
-  useEffect(() => { void hydrate() }, [hydrate])
+  useEffect(() => { void reload() }, [reload])
 
-  // Default to the conversation currently in front of the user, falling back to
-  // the most recent one, so the page opens somewhere useful.
-  useEffect(() => {
-    if (chatId || conversations.length === 0) return
-    const active = useChatsStore.getState().activeId
-    setChatId(active ?? conversations[0]?.id ?? null)
-  }, [chatId, conversations])
+  const blank = useMemo<Memory>(
+    () => ({ name: '', description: '', type: 'user', body: '', why: '', howToApply: '', links: [], updatedAt: null }),
+    [],
+  )
 
-  const chatEntries = chatId ? byChat[chatId] ?? [] : []
-  const chatCount = useMemo(() => Object.values(byChat).reduce((total, list) => total + list.length, 0), [byChat])
+  const onSave = useCallback(async () => {
+    if (!editing) return
+    if (!editing.name.trim()) { setError('A memory needs a name.'); return }
+    try {
+      await save(editing)
+      setEditing(null)
+      setCreating(false)
+      setError('')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That memory could not be saved.')
+    }
+  }, [editing, save])
 
-  const submitGlobal = () => {
-    if (!draftGlobal.trim()) return
-    add(draftGlobal, 'global')
-    setDraftGlobal('')
+  const onDelete = useCallback(async (name: string) => {
+    try {
+      await remove(name)
+      toast('info', 'Memory removed', name)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'That memory could not be removed.')
+    }
+  }, [remove, toast])
+
+  if (loading && !loaded) {
+    return <section className="view memory-view"><p className="memory-empty">Reading your memory…</p></section>
   }
-  const submitChat = () => {
-    if (!draftChat.trim() || !chatId) return
-    add(draftChat, 'chat', chatId)
-    setDraftChat('')
-  }
-
-  const rows = (entries: MemoryEntry[], scope: MemoryScope, ownerChatId: string | null) =>
-    entries.length === 0 ? (
-      <p className="memory-empty">
-        {scope === 'global'
-          ? 'Nothing remembered yet. Anything you add here is used in every chat.'
-          : 'No memory for this conversation yet.'}
-      </p>
-    ) : (
-      <ul className="memory-list">
-        {entries.map((entry) => (
-          <li key={entry.id} className="memory-item">
-            {editing?.id === entry.id ? (
-              <div className="memory-edit">
-                <textarea
-                  value={editing.text}
-                  autoFocus
-                  onChange={(e) => setEditing({ ...editing, text: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      update(entry.id, editing.text, scope, ownerChatId)
-                      setEditing(null)
-                    }
-                    if (e.key === 'Escape') setEditing(null)
-                  }}
-                />
-                <div className="memory-edit-actions">
-                  <button onClick={() => { update(entry.id, editing.text, scope, ownerChatId); setEditing(null) }}>Save</button>
-                  <button className="ghost" onClick={() => setEditing(null)}>Cancel</button>
-                </div>
-              </div>
-            ) : (
-              <>
-                <p className="memory-content">{entry.content}</p>
-                <div className="memory-meta">
-                  <span>{entry.source === 'chat' ? 'From this chat' : 'You'}</span>
-                  <span className="memory-dot" aria-hidden="true">·</span>
-                  <time dateTime={entry.createdAt}>{new Date(entry.createdAt).toLocaleDateString()}</time>
-                </div>
-                <div className="memory-actions">
-                  <button className="ghost" onClick={() => setEditing({ id: entry.id, scope, chatId: ownerChatId, text: entry.content })}>Edit</button>
-                  {scope === 'global' && chatId && (
-                    <button className="ghost" onClick={() => demote(entry.id, chatId)} title="Use only in this conversation">
-                      Use in this chat only
-                    </button>
-                  )}
-                  {scope === 'chat' && ownerChatId && (
-                    <button className="ghost" onClick={() => promote(entry.id, ownerChatId)} title="Apply to every conversation">
-                      Apply to all chats
-                    </button>
-                  )}
-                  <button className="ghost danger" onClick={() => remove(entry.id, scope, ownerChatId)}>Delete</button>
-                </div>
-              </>
-            )}
-          </li>
-        ))}
-      </ul>
-    )
 
   return (
     <section className="view memory-view">
@@ -122,82 +76,139 @@ export default function MemoryPage() {
         <div>
           <h1>Memory</h1>
           <p className="memory-sub">
-            What Orin remembers. Global memory follows you into every chat; chat memory stays with one conversation.
+            One file per fact, kept in your workspace&apos;s memory folder. These are
+            sent to the model with every message as reference — never as instructions.
           </p>
+          {directory && <p className="memory-dir"><code>{directory}</code></p>}
         </div>
+        <Button size="sm" onClick={() => { setEditing({ ...blank }); setCreating(true); setError('') }}>
+          New memory
+        </Button>
       </header>
 
-      <div className="memory-columns">
-        <section className="memory-col" aria-label="Global memory">
-          <div className="memory-col-head">
-            <h2>Across all chats</h2>
-            <span className="memory-count">{global.length}</span>
-            {global.length > 0 && (
-              <button className="ghost" onClick={() => clearScope('global')}>Clear all</button>
-            )}
+      {error && <p className="memory-error" role="alert">{error}</p>}
+
+      {problems.length > 0 && (
+        <div className="memory-problems">
+          <strong>{problems.length} problem{problems.length === 1 ? '' : 's'} in your memory files</strong>
+          <ul>
+            {problems.map((p) => <li key={`${p.file}:${p.field}`}><code>{p.file}</code> — {p.message}</li>)}
+          </ul>
+        </div>
+      )}
+
+      {editing && (
+        <form className="memory-editor" onSubmit={(e) => { e.preventDefault(); void onSave() }}>
+          <div className="memory-editor-grid">
+            <label>
+              Name (kebab-case)
+              <input
+                value={editing.name}
+                placeholder="prefers-pnpm"
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                onBlur={() => setEditing((m) => (m && !m.name ? { ...m, name: toSlug(m.description) } : m))}
+              />
+            </label>
+            <label>
+              Type
+              <select value={editing.type} onChange={(e) => setEditing({ ...editing, type: e.target.value as MemoryType })}>
+                {MEMORY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
           </div>
-          <p className="memory-hint">
-            Preferences and facts about you. Sent with every request, so keep it short and only keep what is true everywhere.
-          </p>
-          <div className="memory-composer">
-            <textarea
-              value={draftGlobal}
-              placeholder="e.g. I prefer short answers with code first"
-              onChange={(e) => setDraftGlobal(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitGlobal() }}
+          <label>
+            Description — one line, used to decide relevance
+            <input
+              value={editing.description}
+              placeholder="This repo installs with pnpm, never npm."
+              onChange={(e) => setEditing({ ...editing, description: e.target.value })}
             />
-            <button onClick={submitGlobal} disabled={!draftGlobal.trim()}>Remember</button>
-          </div>
-          {rows(global, 'global', null)}
-        </section>
-
-        <section className="memory-col" aria-label="Conversation memory">
-          <div className="memory-col-head">
-            <h2>This chat only</h2>
-            <span className="memory-count">{chatEntries.length}</span>
-            {chatEntries.length > 0 && (
-              <button className="ghost" onClick={() => clearScope('chat', chatId)}>Clear</button>
-            )}
-          </div>
-
-          <label className="memory-chat-picker">
-            Conversation
-            <select value={chatId ?? ''} onChange={(e) => setChatId(e.target.value || null)}>
-              <option value="">Select a conversation…</option>
-              {conversations.map((c) => (
-                <option key={c.id} value={c.id}>{c.title}</option>
-              ))}
-            </select>
           </label>
-
-          <p className="memory-hint">
-            {chatCount === 0
-              ? 'Scoped detail for one conversation — decisions, names, constraints. Not sent to other chats.'
-              : `${chatCount} memor${chatCount === 1 ? 'y' : 'ies'} saved across all conversations.`}
-          </p>
-
-          {chatId ? (
-            <>
-              <div className="memory-composer">
-                <textarea
-                  value={draftChat}
-                  placeholder="e.g. this repo deploys with pnpm, not npm"
-                  onChange={(e) => setDraftChat(e.target.value)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) submitChat() }}
-                />
-                <button onClick={submitChat} disabled={!draftChat.trim()}>Remember</button>
-              </div>
-              {rows(chatEntries, 'chat', chatId)}
-            </>
-          ) : (
-            <EmptyState
-              title="No conversation selected"
-              hint="Start a chat, or pick one above, to keep memory scoped to it."
-              action={<button className="button-primary" onClick={() => setView('chat')}>Go to chat</button>}
+          <label>
+            The fact
+            <textarea
+              value={editing.body}
+              placeholder="Orin Code builds with pnpm. Running npm install breaks the lockfile."
+              onChange={(e) => setEditing({ ...editing, body: e.target.value })}
             />
+          </label>
+          {REQUIRES_RATIONALE.includes(editing.type) && (
+            <>
+              <label>
+                Why
+                <textarea
+                  className="memory-rationale"
+                  value={editing.why}
+                  placeholder="The workspace is a pnpm monorepo and npm rewrites it."
+                  onChange={(e) => setEditing({ ...editing, why: e.target.value })}
+                />
+              </label>
+              <label>
+                How to apply
+                <textarea
+                  className="memory-rationale"
+                  value={editing.howToApply}
+                  placeholder="Use pnpm for any install or add in this repo."
+                  onChange={(e) => setEditing({ ...editing, howToApply: e.target.value })}
+                />
+              </label>
+            </>
           )}
-        </section>
-      </div>
+          <label>
+            Related memories (wiki-links)
+            <input
+              value={editing.links.join(', ')}
+              placeholder="other-memory, third"
+              onChange={(e) => setEditing({
+                ...editing,
+                links: e.target.value.split(',').map((s) => s.trim()).filter(Boolean),
+              })}
+            />
+          </label>
+          <div className="memory-editor-actions">
+            <Button size="sm" type="submit">Save memory</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setEditing(null); setCreating(false) }}>Cancel</Button>
+            <span className="memory-preview-name">Saves to <code>{toSlug(editing.name || editing.description || 'memory')}.md</code></span>
+          </div>
+        </form>
+      )}
+
+      {memories.length === 0 && !creating ? (
+        <EmptyState
+          title="No memory yet"
+          hint="Memories are files in your workspace's memory folder — one fact each, readable by you and by the model."
+          action={<Button size="sm" onClick={() => { setEditing({ ...blank }); setCreating(true) }}>Write your first memory</Button>}
+        />
+      ) : (
+        <ul className="memory-list">
+          {memories.map((memory) => (
+            <li key={memory.name} className="memory-item">
+              <div className="memory-item-head">
+                <code className="memory-name">{memory.name}</code>
+                <span className={`memory-type memory-type--${memory.type}`}>{memory.type}</span>
+                {memory.links.map((link) => <code key={link} className="memory-link">[[{link}]]</code>)}
+                {memory.updatedAt && <time className="memory-when" dateTime={memory.updatedAt}>
+                  {new Date(memory.updatedAt).toLocaleDateString()}
+                </time>}
+              </div>
+              <p className="memory-description">{memory.description}</p>
+              {memory.body && <p className="memory-body">{memory.body}</p>}
+              {memory.why && <p className="memory-rationale-line"><strong>Why:</strong> {memory.why}</p>}
+              {memory.howToApply && <p className="memory-rationale-line"><strong>How to apply:</strong> {memory.howToApply}</p>}
+              <div className="memory-actions">
+                <Button size="sm" variant="ghost" onClick={() => { setEditing({ ...memory }); setCreating(false); setError('') }}>Edit</Button>
+                <Button size="sm" variant="ghost" onClick={() => void onDelete(memory.name)}>Delete</Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {!memories.length && !loading && (
+        <p className="memory-note">
+          Memory is per workspace. <button type="button" className="link-button" onClick={() => setView('home')}>Open a project</button> to give it somewhere to live.
+        </p>
+      )}
     </section>
   )
 }

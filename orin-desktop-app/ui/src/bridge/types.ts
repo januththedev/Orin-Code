@@ -243,3 +243,10 @@ export interface RefreshReport {
   disappeared: string[]
   allFailed: boolean
 }
+
+/** One memory file on disk. The UI owns parsing the frontmatter. */
+export interface MemoryFile {
+  name: string
+  content: string
+  updatedAtMs: number
+}
