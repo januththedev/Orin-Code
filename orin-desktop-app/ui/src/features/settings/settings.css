@@ -390,3 +390,23 @@
 .update-progress-bar { position: absolute; inset: 0 auto 0 0; background: var(--accent-soft); border-right: 1px solid var(--accent); transition: width .2s ease; }
 .update-progress span { position: relative; padding: 0 10px; font: var(--fs-sm) var(--font-mono); color: var(--muted); }
 .update-notes { margin: 10px 0 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-raised); color: var(--muted); font: var(--fs-sm)/1.6 var(--font-mono); max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* integrations: connectors and MCP servers in one list */
+.integration-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.integration-row { display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--panel-raised); }
+.integration-icon { flex: none; margin-top: 2px; color: var(--muted); }
+.integration-main { flex: 1; min-width: 0; }
+.integration-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.integration-badge { font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); }
+.integration-badge.on { color: #86efac; border-color: rgba(134,239,172,.4); }
+.integration-badge.off { color: var(--muted-2); }
+.integration-kind { font: 10px var(--font-mono); color: var(--muted-2); }
+.integration-detail { margin: 4px 0 0; font-size: var(--fs-sm); color: var(--muted); }
+.integration-hint { margin: 3px 0 0; font-size: var(--fs-xs); color: var(--muted-2); }
+.integration-actions { display: flex; gap: 6px; align-items: center; }
+.integration-section-head { display: flex; align-items: center; justify-content: space-between; margin: 26px 0 4px; }
+.integration-section-head h3 { margin: 0; font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.integration-add { display: grid; grid-template-columns: 1fr 2fr auto; gap: 8px; margin: 10px 0; }
+.integration-add input { border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; background: var(--panel-raised); color: var(--text); font: 14px var(--font-sans); }
+.integration-footnote { display: flex; align-items: center; gap: 7px; margin: 22px 0 0; font-size: var(--fs-xs); color: var(--muted-2); }
+@media (max-width: 720px) { .integration-add { grid-template-columns: 1fr; } }
