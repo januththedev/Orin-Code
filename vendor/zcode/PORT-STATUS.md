@@ -108,6 +108,48 @@ shipping a known non-functional placeholder or removing a sandbox:
 
 ---
 
+## Stages 1-6: all delivered
+
+| Stage | What it is | State |
+| --- | --- | --- |
+| 1 | Mandatory `text-ui-*` type scale, one interval, lint-enforced | Done |
+| 2 | Semantic colour roles and file-type icon descriptors | Done |
+| 3 | Connectors and MCP servers unified into one Integrations surface | Done |
+| 4 | Session lifecycle hooks, deny-only by design | Done |
+| 5 | Background tasks and sub-agents, still approval-gated | Done |
+| 6 | Read a public page from inside the app | Done |
+| — | Always-on-top pet window (separate from the stages) | Done |
+| — | Slow chat loading fixed at the storage layer | Done |
+| — | Memory moved to files, in ZCode's own layout | Done |
+| — | In-app auto-update, signed, from GitHub Releases | Done |
+| — | Google sign-in, verified in Core | Done |
+
+### Three places the port deliberately differs from ZCode
+
+Each is a place where copying upstream would have been a regression, and each
+is tested so it cannot drift back.
+
+**Hooks cannot approve.** ZCode's own NOTICE records that its hooks can run
+processes and participate in permission decisions. A workspace hook file is
+content the model may have helped write, so if it could green-light a mutation
+it would silently defeat the run-bound, expiring, single-use approvals the agent
+depends on. Orin's hooks may deny a tool or add context. That is all.
+
+**Computer Use is kept, not ported.** ZCode's `packages/zcode-cua` is a
+placeholder that returns an unavailable error. Orin Code's works.
+
+**The agent is still sandboxed.** ZCode's shared agent adapter has no default
+OS-level sandbox; Orin Code's runs inside a Rust-enforced workspace boundary
+that rejects traversal, symlink escapes, and anything outside the active root.
+
+### One thing that could not be ported
+
+`text-ui-*` in ZCode is a Tailwind utility class. Orin Code is not a Tailwind
+project, so the *scale* is ported — the same seven roles, the same sizes, the
+same rule that only `--ui-font-size` moves them — but as CSS custom properties
+rather than as class names. The rule is enforced by a test that fails the build
+if a stylesheet reintroduces a hardcoded interface size.
+
 ## Still to build from the request
 
 Stage 3 (unify Connectors + MCP), stage 5 (sub-agents + background tasks),
