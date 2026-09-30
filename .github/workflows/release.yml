@@ -155,20 +155,19 @@ jobs:
                         Where-Object { $_.Extension -eq '.exe' -or $_.Extension -eq '.msi' }
           if (-not $installers) { Write-Error "No installer produced."; exit 1 }
           $sigs = Get-ChildItem -Path $release -Recurse -File -Filter '*.sig' -ErrorAction SilentlyContinue
-          $manifest = Get-ChildItem -Path $release -Recurse -File -Filter 'latest.json' -ErrorAction SilentlyContinue |
-                      Select-Object -First 1
-
           foreach ($f in @($installers) + @($sigs)) { Copy-Item $f.FullName -Destination $out -Force }
 
-          # A release that looks updatable but has no manifest points every
-          # installed app at a 404. Fail here rather than ship that.
+          # The Tauri CLI signs the installer but never writes the manifest —
+          # the string `latest.json` is absent from the CLI binary entirely.
+          # Publishing it is the release process's job, so build it from the
+          # signed artifacts that are actually on disk. The script refuses to
+          # emit a manifest for an unsigned installer: an update the app cannot
+          # verify is worse than no update.
           if ($env:SIGNED -eq 'true') {
-            if (-not $manifest) {
-              Write-Error "Signing is configured but tauri produced no latest.json; the in-app updater would break for every user."
-              exit 1
-            }
-            if (-not $sigs) { Write-Error "Signing is configured but no .sig was produced."; exit 1 }
-            Copy-Item $manifest.FullName -Destination $out -Force
+            if (-not $sigs) { Write-Error "Signing was configured but no .sig was produced."; exit 1 }
+            $version = (Get-Content orin-desktop-app/src-tauri/tauri.conf.json | ConvertFrom-Json).version
+            node orin-desktop-app/scripts/make-latest-json.mjs --dir $out --version $version --repo "${{ github.repository }}" --tag "${{ github.ref_name }}"
+            if ($LASTEXITCODE -ne 0) { Write-Error "Could not build the updater manifest."; exit 1 }
           }
 
           Get-ChildItem $out | ForEach-Object { "{0}`t{1:N1} MB" -f $_.Name, ($_.Length / 1MB) }
