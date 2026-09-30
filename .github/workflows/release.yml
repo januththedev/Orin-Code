@@ -151,10 +151,14 @@ jobs:
           # The installer, its updater signature, and the updater manifest.
           # .sig was missing from the first version of this filter, which
           # silently threw away the signature.
-          $installers = Get-ChildItem -Path $release -Recurse -File |
+          # Scoped to the bundle directory on purpose. Scanning all of
+          # target/release swept up hundreds of Cargo `build_script_build-*.exe`
+          # files and published them as release assets.
+          $bundle = Join-Path $release 'bundle'
+          $installers = Get-ChildItem -Path $bundle -Recurse -File -ErrorAction SilentlyContinue |
                         Where-Object { $_.Extension -eq '.exe' -or $_.Extension -eq '.msi' }
           if (-not $installers) { Write-Error "No installer produced."; exit 1 }
-          $sigs = Get-ChildItem -Path $release -Recurse -File -Filter '*.sig' -ErrorAction SilentlyContinue
+          $sigs = Get-ChildItem -Path $bundle -Recurse -File -Filter '*.sig' -ErrorAction SilentlyContinue
           foreach ($f in @($installers) + @($sigs)) { Copy-Item $f.FullName -Destination $out -Force }
 
           # The Tauri CLI signs the installer but never writes the manifest —
