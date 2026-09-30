@@ -118,3 +118,24 @@ test('the command line exits non-zero for an unsigned installer', async () => {
     /No signature/,
   )
 })
+
+test('the asset name has nothing GitHub would rewrite on upload', async () => {
+  // GitHub replaced the space in "Orin Code_1.8.0_x64-setup.exe" with a dot
+  // when it was uploaded, so the manifest's %20 URL 404'd and the app offered
+  // an update it could not download.
+  const { buildManifest } = await import('../scripts/make-latest-json.mjs')
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join } = await import('node:path')
+
+  const dir = await mkdtemp(join(tmpdir(), 'orin-name-'))
+  const name = 'orin-code_1.8.0_x64-setup.exe'
+  await writeFile(join(dir, name), 'MZ', 'utf8')
+  await writeFile(join(dir, `${name}.sig`), SIGNATURE, 'utf8')
+
+  const manifest = await buildManifest({ dir, version: VERSION, repo: REPO, tag: TAG, now: '2026-01-01T00:00:00.000Z' })
+  const url = manifest.platforms['windows-x86_64'].url
+  assert.ok(!/%20/.test(url), `the URL must not depend on a space: ${url}`)
+  assert.ok(!/\s/.test(url), `the URL must contain no whitespace: ${url}`)
+  assert.ok(url.endsWith(name), url)
+})

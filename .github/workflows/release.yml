@@ -159,7 +159,15 @@ jobs:
                         Where-Object { $_.Extension -eq '.exe' -or $_.Extension -eq '.msi' }
           if (-not $installers) { Write-Error "No installer produced."; exit 1 }
           $sigs = Get-ChildItem -Path $bundle -Recurse -File -Filter '*.sig' -ErrorAction SilentlyContinue
-          foreach ($f in @($installers) + @($sigs)) { Copy-Item $f.FullName -Destination $out -Force }
+          # GitHub replaces spaces in an uploaded asset name with dots, so
+          # "Orin Code_1.8.0_x64-setup.exe" is published as
+          # "Orin.Code_1.8.0_x64-setup.exe" and the manifest's percent-encoded
+          # URL 404s. Publish a name with no spaces so the URL in the manifest
+          # and the asset actually agree.
+          foreach ($f in @($installers) + @($sigs)) {
+            $name = $f.Name -replace '\s+', '-'
+            Copy-Item $f.FullName -Destination (Join-Path $out $name) -Force
+          }
 
           # The Tauri CLI signs the installer but never writes the manifest —
           # the string `latest.json` is absent from the CLI binary entirely.
@@ -169,6 +177,10 @@ jobs:
           # verify is worse than no update.
           if ($env:SIGNED -eq 'true') {
             if (-not $sigs) { Write-Error "Signing was configured but no .sig was produced."; exit 1 }
+            if (Get-ChildItem $out -File | Where-Object { $_.Name -match '\s' }) {
+              Write-Error "An artifact name still contains whitespace; the manifest URL would not resolve."
+              exit 1
+            }
             $version = (Get-Content orin-desktop-app/src-tauri/tauri.conf.json | ConvertFrom-Json).version
             node orin-desktop-app/scripts/make-latest-json.mjs --dir $out --version $version --repo "${{ github.repository }}" --tag "${{ github.ref_name }}"
             if ($LASTEXITCODE -ne 0) { Write-Error "Could not build the updater manifest."; exit 1 }
