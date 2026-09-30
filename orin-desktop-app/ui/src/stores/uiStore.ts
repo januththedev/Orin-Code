@@ -10,6 +10,7 @@ export type ViewId =
   | 'studio'
   | 'notes'
   | 'queue'
+  | 'browser'
   | 'memory'
   | 'customize'
   | 'settings'

@@ -272,3 +272,13 @@ export interface BackgroundTask {
   finishedAtMs: number | null
   error: string | null
 }
+
+/** A public page fetched for the agent, reduced to text. */
+export interface PageText {
+  url: string
+  finalUrl: string
+  status: number
+  contentType: string
+  text: string
+  truncated: boolean
+}

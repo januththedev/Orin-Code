@@ -22,6 +22,7 @@ import type {
   UpdateState,
   RefreshReport,
   BackgroundTask,
+  PageText,
 } from './types'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -256,6 +257,11 @@ export const bridge = {
   hooksStatus: (): Promise<HookStatus> => invoke('hooks_status'),
   hooksTrust: (): Promise<string> => invoke('hooks_trust'),
   hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
+  // In-app browser. Refuses private, loopback, and cloud-metadata addresses
+  // before anything leaves the machine, then defers to Orin Tools so there is
+  // one implementation of "what may the agent read".
+  browserRead: (url: string, maxChars?: number): Promise<PageText> =>
+    invoke('browser_read', { url, maxChars: maxChars ?? null }),
   // Background tasks and sub-agents. A queued task still asks for approval
   // before anything mutating; the queue is not a licence to act unattended.
   queueList: (): Promise<BackgroundTask[]> => invoke('queue_list'),

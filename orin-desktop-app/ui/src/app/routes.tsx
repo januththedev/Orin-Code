@@ -14,6 +14,7 @@ const SkillsPage = lazy(() => import('../features/settings/SkillsPage'))
 const ConnectorsPage = lazy(() => import('../features/settings/ConnectorsPage'))
 const IntegrationsPage = lazy(() => import('../features/settings/IntegrationsPage'))
 const QueuePage = lazy(() => import('../features/queue/QueuePage'))
+const BrowserPage = lazy(() => import('../features/browser/BrowserPage'))
 const StudioPage = lazy(() => import('../features/studio/StudioPage'))
 const NotesPage = lazy(() => import('../features/notes/NotesPage'))
 const MemoryPage = lazy(() => import('../features/memory/MemoryPage'))
@@ -44,6 +45,8 @@ export function CurrentView({ view }: { view: ViewId }) {
       return <SkillsPage />
     case 'queue':
       return <QueuePage />
+    case 'browser':
+      return <BrowserPage />
     case 'connectors':
       return <IntegrationsPage />
     case 'home':

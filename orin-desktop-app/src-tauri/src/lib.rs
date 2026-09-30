@@ -61,6 +61,7 @@ pub fn run() {
             bridge::update::update_check,
             bridge::update::update_install,
             bridge::update::update_restart,
+            bridge::browser::browser_read,
             bridge::queue::queue_list,
             bridge::queue::queue_enqueue,
             bridge::queue::queue_cancel,
