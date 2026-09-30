@@ -8,7 +8,28 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::State;
 
-pub const DEFAULT_API_BASE: &str = "https://orinai.org";
+/// Orin Core's own host.
+///
+/// Not `https://orinai.org`: that is the ecosystem hub, and it does not serve the
+/// API. Pointing the app at the apex made every auth call 308 to `www` and then
+/// 404, which surfaced as "Orin Core request failed (404 Not Found)" on the
+/// sign-in screen.
+pub const DEFAULT_API_BASE: &str = "https://chat.orinai.org";
+
+/// Front-ends that answer with a page rather than a JSON response. Naming one
+/// as the API base produces a confusing HTML error instead of a useful one, so
+/// it is refused here rather than at the far end.
+const NON_API_HOSTS: &[&str] = &[
+    "orinai.org",
+    "www.orinai.org",
+    "tools.orinai.org",
+    "console.orinai.org",
+    "router.orinai.org",
+    "agent.orinai.org",
+    "automate.orinai.org",
+    "mcp.orinai.org",
+    "code.orinai.org",
+];
 const SESSION_KEY: &str = "auth.session";
 const STALE_MS: u64 = 120_000;
 const CLIENT_ID: &str = "orin-code-desktop";
@@ -50,6 +71,11 @@ pub fn api_base() -> String {
         || url.fragment().is_some()
     {
         return DEFAULT_API_BASE.to_string();
+    }
+    if let Some(host) = url.host_str() {
+        if NON_API_HOSTS.iter().any(|bad| bad.eq_ignore_ascii_case(host)) {
+            return DEFAULT_API_BASE.to_string();
+        }
     }
     url.origin().ascii_serialization()
 }
@@ -202,4 +228,50 @@ mod tests {
     #[test] fn stale_boundaries() { assert!(!is_stale(900_000, 0)); assert!(is_stale(900_000, 800_000)); }
     #[test] fn pkce_is_s256() { let (verifier, challenge) = pkce(); assert_eq!(verifier.len(), 64); assert_eq!(challenge.len(), 43); }
     #[test] fn token_parser_requires_rotation_pair() { assert!(parse_tokens(&serde_json::json!({ "access_token": "a", "refresh_token": "r", "expires_in": 900 })).is_ok()); assert!(parse_tokens(&serde_json::json!({ "access_token": "a" })).is_err()); }
+}
+
+#[cfg(test)]
+mod api_base_tests {
+    use super::*;
+
+    #[test]
+    fn the_default_is_a_host_that_actually_serves_the_api() {
+        assert_eq!(DEFAULT_API_BASE, "https://chat.orinai.org");
+        assert!(!DEFAULT_API_BASE.contains("orinai.org\""), "must not be the apex");
+    }
+
+    #[test]
+    fn a_front_end_host_is_refused_rather_than_answered_with_html() {
+        // These are real Vercel projects. Naming one as the API base is the
+        // mistake that produced the 404 on the sign-in screen.
+        for bad in NON_API_HOSTS {
+            std::env::set_var("ORIN_API_BASE", format!("https://{bad}"));
+            assert_eq!(api_base(), DEFAULT_API_BASE, "{bad} must fall back");
+        }
+        std::env::remove_var("ORIN_API_BASE");
+    }
+
+    #[test]
+    fn core_hosts_and_local_development_are_accepted() {
+        for good in ["https://chat.orinai.org", "http://127.0.0.1:4321", "http://localhost:8787"] {
+            std::env::set_var("ORIN_API_BASE", good);
+            assert_eq!(api_base(), good.trim_end_matches('/'), "{good}");
+        }
+        std::env::remove_var("ORIN_API_BASE");
+    }
+
+    #[test]
+    fn an_unparseable_or_unsafe_base_falls_back() {
+        for bad in [
+            "not a url",
+            "http://chat.orinai.org",          // not https, not loopback
+            "https://user:pw@chat.orinai.org",  // credentials
+            "https://chat.orinai.org?x=1",      // query
+            "https://chat.orinai.org#frag",     // fragment
+        ] {
+            std::env::set_var("ORIN_API_BASE", bad);
+            assert_eq!(api_base(), DEFAULT_API_BASE, "{bad}");
+        }
+        std::env::remove_var("ORIN_API_BASE");
+    }
 }
