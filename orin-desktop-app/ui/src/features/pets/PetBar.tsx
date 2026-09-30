@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
+import { bridge } from '../../bridge/client'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useProjectsStore } from '../../stores/projectsStore'
 import { PETS, PET_IDS, clampLabel, describeStatus, MOOD_TONE, type PetId, type PetMood } from './petModel'
@@ -31,6 +32,19 @@ export function PetBar() {
 
   const status = describeStatus({ streaming, agentRuns: 0, pendingApprovals: 0, projectRoot, error })
 
+  const [floating, setFloating] = useState(false)
+
+  // Clicking the in-app bar shows the small always-on-top window, which is
+  // what stays visible over other apps. The bar itself brings the app forward.
+  const showFloating = () => {
+    bridge.petToggle()
+      .then((visible: boolean) => {
+        setFloating(visible)
+        if (visible) bridge.petSet({ label: status.label, mood: status.mood, activity: status.activity }).catch(() => {})
+      })
+      .catch((e: unknown) => setError(e instanceof Error ? e.message : 'Could not open the floating window'))
+  }
+
   const bringForward = () => {
     getCurrentWindow()
       .show()
@@ -46,11 +60,11 @@ export function PetBar() {
       className="pet-bar"
       data-mood={status.mood}
       style={{ ['--pet-hue' as string]: `${spec.hue}`, ['--pet-activity' as string]: String(status.activity) }}
-      onClick={bringForward}
+      onClick={floating ? bringForward : showFloating}
       role="status"
       aria-live="polite"
       aria-label={`Orin status: ${status.label}`}
-      title={error ?? 'Click to bring Orin Code forward'}
+      title={error ?? (floating ? 'Click to bring Orin Code forward' : 'Show the always-on-top status window')}
     >
       <PetFace mood={status.mood} activity={status.activity} />
       <span className="pet-name">{spec.name}</span>

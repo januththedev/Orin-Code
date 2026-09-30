@@ -9,10 +9,22 @@ import { useSettingsStore } from './stores/settingsStore'
 import { useProjectsStore } from './stores/projectsStore'
 import { StealthModal } from './components/StealthModal'
 import { PetBar } from './features/pets/PetBar'
+import { PetWindow } from './features/pets/PetWindow'
+import { isPetWindow } from './features/pets/window'
 
 type Phase = 'booting' | 'welcome' | 'app'
 
+/**
+ * The pet window loads the same bundle as the main window, so the branch has
+ * to sit *above* the component that owns the hooks. Returning early from inside
+ * `App` would run every hook in it conditionally, which React forbids.
+ */
 export default function App() {
+  return isPetWindow() ? <PetWindow /> : <MainApp />
+}
+
+function MainApp() {
+
   const hydrateAll = useUiStore((state) => state.hydrateAll)
   const [phase, setPhase] = useState<Phase>('booting')
   const [stealth, setStealth] = useState<ModelInfo[]>([])

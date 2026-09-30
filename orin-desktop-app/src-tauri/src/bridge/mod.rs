@@ -13,6 +13,7 @@ pub mod mcp;
 pub mod model_refresh;
 pub mod memory_fs;
 pub mod models_fetch;
+pub mod pets;
 pub mod presets;
 pub mod queue;
 pub mod store;

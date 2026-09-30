@@ -21,6 +21,21 @@
         "decorations": false,
         "transparent": false,
         "resizable": true
+      },
+      {
+        "label": "pet",
+        "title": "Orin",
+        "width": 300,
+        "height": 96,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": false,
+        "center": false,
+        "visible": false,
+        "focus": false
       }
     ],
     "security": {

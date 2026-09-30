@@ -257,6 +257,11 @@ export const bridge = {
   hooksStatus: (): Promise<HookStatus> => invoke('hooks_status'),
   hooksTrust: (): Promise<string> => invoke('hooks_trust'),
   hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
+  // The always-on-top pet window. Off by default; the in-app bar toggles it.
+  petToggle: (): Promise<boolean> => invoke('pet_toggle'),
+  petFocus: (): Promise<void> => invoke('pet_focus'),
+  petSet: (status: { label: string; mood: 'idle' | 'working' | 'waiting' | 'error' | 'happy'; activity: number }) =>
+    invoke('pet_set', { status }),
   // In-app browser. Refuses private, loopback, and cloud-metadata addresses
   // before anything leaves the machine, then defers to Orin Tools so there is
   // one implementation of "what may the agent read".
