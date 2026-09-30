@@ -18,6 +18,7 @@
 
 import { readdir, readFile, writeFile } from 'node:fs/promises'
 import { join, basename } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 function parseArgs(argv) {
   const out = {}
@@ -106,7 +107,11 @@ async function main() {
   console.log(`  signature ${target.signature.length} chars`)
 }
 
-if (import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`) {
+// Compare against a properly built file URL. Hand-rolling
+// `file://${process.argv[1]}` yields two slashes on Windows where a real file URL
+// has three, so the entry body never ran: the script exited 0 having done
+// nothing, and the release shipped without a manifest.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     console.error(`make-latest-json: ${error.message}`)
     process.exit(1)

@@ -75,3 +75,46 @@ test('the written manifest is valid JSON a client can parse', async () => {
   const reparsed = JSON.parse(JSON.stringify(manifest))
   assert.equal(reparsed.platforms['windows-x86_64'].signature, SIGNATURE)
 })
+
+test('the script actually runs as a command line, not just when imported', async () => {
+  // The first version guarded its entry point with a hand-built
+  // `file://${argv[1]}` comparison, which produces two slashes on Windows
+  // where the real URL has three. The entry body never ran, the process exited
+  // 0, and the release silently shipped without a manifest. Import-only tests
+  // cannot catch that, so run it.
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const run = promisify(execFile)
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join, resolve } = await import('node:path')
+
+  const dir = await mkdtemp(join(tmpdir(), 'orin-cli-'))
+  await writeFile(join(dir, INSTALLER), 'MZ', 'utf8')
+  await writeFile(join(dir, SIG), SIGNATURE, 'utf8')
+
+  const script = resolve('scripts/make-latest-json.mjs')
+  const { stdout } = await run(process.execPath, [script, '--dir', dir, '--version', VERSION, '--repo', REPO, '--tag', TAG])
+
+  assert.match(stdout, /wrote /, `the CLI must actually write: ${stdout}`)
+  const written = JSON.parse(await readFile(join(dir, 'latest.json'), 'utf8'))
+  assert.equal(written.version, VERSION)
+  assert.equal(written.platforms['windows-x86_64'].signature, SIGNATURE)
+})
+
+test('the command line exits non-zero for an unsigned installer', async () => {
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const { mkdtemp, writeFile } = await import('node:fs/promises')
+  const { tmpdir } = await import('node:os')
+  const { join, resolve } = await import('node:path')
+  const run = promisify(execFile)
+
+  const dir = await mkdtemp(join(tmpdir(), 'orin-cli-bad-'))
+  await writeFile(join(dir, INSTALLER), 'MZ', 'utf8')
+  const script = resolve('scripts/make-latest-json.mjs')
+  await assert.rejects(
+    () => run(process.execPath, [script, '--dir', dir, '--version', VERSION, '--repo', REPO, '--tag', TAG]),
+    /No signature/,
+  )
+})
