@@ -227,6 +227,14 @@ jobs:
           if [ "$attached" -lt 1 ]; then echo "::error::release $tag has no assets after upload"; exit 1; fi
           gh release view "$tag" --json url -q .url
 
+      # The updater broke four separate ways, and each produced a release that
+      # looked healthy on the release page. Check the chain an installed app
+      # actually walks: manifest -> asset -> bytes -> signature sibling.
+      - name: Verify the published release is coherent
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        run: node orin-desktop-app/scripts/verify-release.mjs
+
   verify-manifest:
     name: release invariants
     runs-on: ubuntu-latest
