@@ -1,0 +1,27 @@
+/* background tasks and sub-agents */
+.queue-view { height: 100%; overflow: auto; padding: 34px clamp(22px, 5vw, 72px); background: var(--bg); color: var(--text); }
+.queue-head { max-width: 900px; margin: 0 auto 20px; }
+.queue-head h1 { margin: 0 0 6px; font-size: clamp(26px, 4vw, 40px); letter-spacing: -.03em; }
+.queue-sub { margin: 0; max-width: 640px; color: var(--muted); line-height: 1.6; }
+.queue-add { max-width: 900px; margin: 0 auto 20px; display: grid; gap: 8px; }
+.queue-add input, .queue-add textarea { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--panel-raised); color: var(--text); font: 14px var(--font-sans); }
+.queue-add textarea { min-height: 64px; resize: vertical; }
+.queue-add button { justify-self: start; }
+.queue-list { max-width: 900px; margin: 0 auto; list-style: none; padding: 0; display: grid; gap: 8px; }
+.queue-list--settled { opacity: .62; }
+.queue-row { display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--line); border-left: 3px solid var(--muted-2); border-radius: 12px; padding: 12px 14px; background: var(--panel-raised); }
+.queue-row--running { border-left-color: var(--accent); }
+.queue-row--awaitingApproval { border-left-color: var(--warn); }
+.queue-row--failed { border-left-color: #d96b57; }
+.queue-row--done { border-left-color: var(--success); }
+.queue-row-main { flex: 1; min-width: 0; }
+.queue-row-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.queue-badge { font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+.queue-badge--sub { color: #a5b4fc; border-color: rgba(165,180,252,.4); }
+.queue-state { font: 10px var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2); margin-left: auto; }
+.queue-instructions { margin: 5px 0 0; font-size: var(--fs-sm); color: var(--muted); overflow-wrap: anywhere; }
+.queue-hold { display: flex; align-items: center; gap: 7px; margin: 7px 0 0; font-size: var(--fs-sm); color: var(--warn); }
+.queue-error { margin: 8px 0; font-size: var(--fs-sm); color: #fca5a5; }
+.queue-actions { display: flex; gap: 6px; align-items: center; }
+.queue-section { max-width: 900px; margin: 26px auto 8px; font-size: var(--fs-caption); text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.queue-footnote { display: flex; align-items: center; gap: 7px; max-width: 900px; margin: 24px auto 0; font-size: var(--fs-xs); color: var(--muted-2); }

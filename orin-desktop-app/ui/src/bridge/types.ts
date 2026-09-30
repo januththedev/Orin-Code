@@ -250,3 +250,25 @@ export interface MemoryFile {
   content: string
   updatedAtMs: number
 }
+
+/** A background task or delegated sub-agent. See bridge::queue. */
+export type TaskState =
+  | 'queued'
+  | 'running'
+  | 'awaitingApproval'
+  | 'done'
+  | 'failed'
+  | 'cancelled'
+
+export interface BackgroundTask {
+  id: string
+  title: string
+  instructions: string
+  state: TaskState
+  delegated: boolean
+  parentId: string | null
+  createdAtMs: number
+  startedAtMs: number | null
+  finishedAtMs: number | null
+  error: string | null
+}

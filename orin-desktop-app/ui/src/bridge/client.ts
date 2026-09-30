@@ -21,6 +21,7 @@ import type {
   MemoryFile,
   UpdateState,
   RefreshReport,
+  BackgroundTask,
 } from './types'
 
 const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window
@@ -255,6 +256,15 @@ export const bridge = {
   hooksStatus: (): Promise<HookStatus> => invoke('hooks_status'),
   hooksTrust: (): Promise<string> => invoke('hooks_trust'),
   hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
+  // Background tasks and sub-agents. A queued task still asks for approval
+  // before anything mutating; the queue is not a licence to act unattended.
+  queueList: (): Promise<BackgroundTask[]> => invoke('queue_list'),
+  queueEnqueue: (task: { id: string; title: string; instructions: string; delegated?: boolean; parentId?: string | null }) =>
+    invoke('queue_enqueue', { ...task, delegated: task.delegated ?? false, parentId: task.parentId ?? null }),
+  queueCancel: (id: string): Promise<string[]> => invoke('queue_cancel', { id }),
+  queueFinish: (id: string, error?: string | null): Promise<void> => invoke('queue_finish', { id, error: error ?? null }),
+  queueHold: (id: string): Promise<void> => invoke('queue_hold', { id }),
+  queueResume: (id: string): Promise<void> => invoke('queue_resume', { id }),
   // File-based memory, laid out the way ZCode lays it out.
   memoryDir: (): Promise<string> => invoke('memory_dir'),
   memoryList: (): Promise<MemoryFile[]> => invoke('memory_list'),

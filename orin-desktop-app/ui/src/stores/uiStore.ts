@@ -9,6 +9,7 @@ export type ViewId =
   | 'artifacts'
   | 'studio'
   | 'notes'
+  | 'queue'
   | 'memory'
   | 'customize'
   | 'settings'

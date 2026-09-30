@@ -13,6 +13,7 @@ pub mod model_refresh;
 pub mod memory_fs;
 pub mod models_fetch;
 pub mod presets;
+pub mod queue;
 pub mod store;
 pub mod sync;
 pub mod telegram;
@@ -42,6 +43,9 @@ pub struct AppState {
     /// and gives stale/replayed decisions a hard expiry.
     pub pending_approvals: Arc<Mutex<HashMap<String, PendingApproval>>>,
     pub terminals: Mutex<HashMap<String, term::TermHandle>>,
+    /// Background tasks and sub-agents. Lazily created so nothing is
+    /// allocated for a session that never uses one.
+    pub background_queue: std::sync::OnceLock<std::sync::Mutex<queue::Queue>>,
     /// Canonical active workspace. Individual filesystem commands resolve paths
     /// against this root and never accept a renderer-selected root per call.
     pub workspace_root: Mutex<Option<std::path::PathBuf>>,

@@ -15,6 +15,7 @@ import {
   Sparkles,
   FileText,
   Brain,
+  ListTree,
 } from 'lucide-react'
 import { bridge } from '../bridge/client'
 import { OrinMark } from '../components/OrinMark'
@@ -84,6 +85,7 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
   { id: 'studio', label: 'Studio', icon: Sparkles },
   { id: 'computer', label: 'Computer Use', icon: Monitor },
   { id: 'notes', label: 'Notes', icon: FileText },
+  { id: 'queue', label: 'Background', icon: ListTree },
   { id: 'memory', label: 'Memory', icon: Brain },
   { id: 'customize', label: 'Customize', icon: SlidersHorizontal },
 ]
