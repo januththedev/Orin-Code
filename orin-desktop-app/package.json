@@ -14,7 +14,11 @@
     "tauri": "tauri",
     "app:dev": "tauri dev",
     "app:build": "tauri build",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "brand": "node scripts/generate-brand-marks.mjs && node scripts/generate-brand-raster.mjs && python scripts/generate-brand-sounds.py",
+    "brand:marks": "node scripts/generate-brand-marks.mjs",
+    "brand:raster": "node scripts/generate-brand-raster.mjs",
+    "brand:sounds": "python scripts/generate-brand-sounds.py"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

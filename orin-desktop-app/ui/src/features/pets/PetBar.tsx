@@ -3,7 +3,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { bridge } from '../../bridge/client'
 import { useChatsStore } from '../../stores/chatsStore'
 import { useProjectsStore } from '../../stores/projectsStore'
-import { PETS, PET_IDS, clampLabel, describeStatus, MOOD_TONE, type PetId, type PetMood } from './petModel'
+import { PETS, PET_IDS, PET_EYE_INK, clampLabel, describeStatus, MOOD_TONE, type PetId, type PetMood } from './petModel'
 import './pets.css'
 
 /**
@@ -66,7 +66,7 @@ export function PetBar() {
       aria-label={`Orin status: ${status.label}`}
       title={error ?? (floating ? 'Click to bring Orin Code forward' : 'Show the always-on-top status window')}
     >
-      <PetFace mood={status.mood} activity={status.activity} />
+      <PetFace pet={pet} mood={status.mood} activity={status.activity} />
       <span className="pet-name">{spec.name}</span>
       <span className="pet-label">{clampLabel(status.label)}</span>
       {status.activity > 0.05 && <span className="pet-pulse" aria-hidden="true" />}
@@ -74,17 +74,30 @@ export function PetBar() {
   )
 }
 
-/** A small face. Mood drives colour, activity drives the motion. */
-function PetFace({ mood, activity }: { mood: PetMood; activity: number }) {
+/**
+ * The pet's face, on the same 24-unit grid as brand/pets/*.svg.
+ *
+ * The silhouette comes from the shared pet model rather than being restated
+ * here, and `scripts/generate-brand-marks.mjs` imports that same model, so the
+ * sprite in the brand kit and the sprite on screen cannot drift apart. Mood
+ * drives colour; activity drives a small scale so a working pet is visibly
+ * awake without the bar becoming an animation to watch.
+ */
+function PetFace({ pet, mood, activity }: { pet: PetId; mood: PetMood; activity: number }) {
+  const spec = PETS[pet]
+  const tone = MOOD_TONE[mood]
   return (
-    <svg className="pet-face" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-      <circle cx="12" cy="12" r="11" fill={MOOD_TONE[mood]} opacity="0.16" />
-      {/* The bolt, Orin's own mark. */}
-      <path
-        d="M13.4 4.5 7.2 13.1h3.6l-.7 6.4 6.2-8.6h-3.6z"
-        fill={MOOD_TONE[mood]}
-        style={{ transformOrigin: '12px 12px', transform: `scale(${1 + activity * 0.08})` }}
-      />
+    <svg
+      className="pet-face"
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      aria-hidden="true"
+      style={{ transformOrigin: '12px 12px', transform: `scale(${1 + activity * 0.08})` }}
+    >
+      <circle cx="12" cy="12" r="11" fill={tone} opacity="0.16" />
+      <path d={spec.body} fill={tone} />
+      <g fill={PET_EYE_INK} dangerouslySetInnerHTML={{ __html: spec.eyes }} />
       {mood === 'error' && <circle cx="18" cy="6" r="2.4" fill={MOOD_TONE.error} />}
       {mood === 'waiting' && <text x="17" y="8" className="pet-mark">!</text>}
     </svg>

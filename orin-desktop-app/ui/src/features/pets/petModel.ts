@@ -19,11 +19,46 @@ export interface PetState {
   activity: number
 }
 
-export const PETS: Readonly<Record<PetId, { name: string; hue: number }>> = {
-  bolt: { name: 'Bolt', hue: 32 },
-  ember: { name: 'Ember', hue: 8 },
-  slate: { name: 'Slate', hue: 210 },
+export interface PetSpec {
+  name: string
+  hue: number
+  /**
+   * Silhouette on a 24-unit grid. Kept here rather than in the bar component so
+   * `scripts/generate-brand-marks.mjs` can import this module and emit the same
+   * geometry into `brand/pets/*.svg`. One definition, two consumers -- an
+   * earlier version duplicated the paths and they were free to drift.
+   */
+  body: string
+  /** Eyes, drawn in brand ink so they read at 18px on any mood colour. */
+  eyes: string
 }
+
+export const PETS: Readonly<Record<PetId, PetSpec>> = {
+  // Sharp and angular: recognisably the app's own bolt.
+  bolt: {
+    name: 'Bolt',
+    hue: 32,
+    body: 'M12 1.6 3.2 13.1h5.2l-1 9.3 8.8-11.5h-5.2z',
+    eyes: '<ellipse cx="9.6" cy="9.4" rx="1.15" ry="1.5"/><ellipse cx="14.4" cy="9.4" rx="1.15" ry="1.5"/>',
+  },
+  // Round and warm, with a flame crest, to read as heat rather than speed.
+  ember: {
+    name: 'Ember',
+    hue: 8,
+    body: 'M12 1.4c4.6 3.4 7 7 7 10.4A7 7 0 0 1 5 11.8C5 8.4 7.4 4.8 12 1.4zm0 4.1c-2.3 2-3.4 4.2-3.4 6a3.4 3.4 0 0 0 6.8 0c0-1.8-1.1-4-3.4-6z',
+    eyes: '<ellipse cx="9.9" cy="10.4" rx="1.05" ry="1.35"/><ellipse cx="14.1" cy="10.4" rx="1.05" ry="1.35"/>',
+  },
+  // Calm and geometric: a rounded hexagon, no crest.
+  slate: {
+    name: 'Slate',
+    hue: 210,
+    body: 'M12 1.8 20.6 7v10L12 22.2 3.4 17V7zm0 2.9L5.6 8.6v6.8L12 19.3l6.4-3.9V8.6z',
+    eyes: '<rect x="8.7" y="9.3" width="2" height="2.5" rx="0.6"/><rect x="13.3" y="9.3" width="2" height="2.5" rx="0.6"/>',
+  },
+}
+
+/** Eyes are brand ink, not the mood colour, or they vanish into the body. */
+export const PET_EYE_INK = '#1c1c1a'
 
 export const PET_IDS: readonly PetId[] = ['bolt', 'ember', 'slate']
 

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 123.4 34">
+  <path d="M13.4 3.2 6.1 13.0h4.1l-1.1 7.8 7.3-9.8h-4.1z" transform="translate(6 6) scale(0.92)" fill="#e08a3c"/>
+  <g transform="translate(39 9) scale(1.6)" fill="#f7f5f1">
+  <g transform="translate(0 0)">
+    <path fill-rule="evenodd" d="M2.6 0h4.8a2.6 2.6 0 0 1 2.6 2.6v4.8a2.6 2.6 0 0 1 -2.6 2.6h-4.8a2.6 2.6 0 0 1 -2.6 -2.6v-4.8a2.6 2.6 0 0 1 2.6 -2.6zM2.6 2.1h4.8a0.5 0.5 0 0 1 0.5 0.5v4.8a0.5 0.5 0 0 1 -0.5 0.5h-4.8a0.5 0.5 0 0 1 -0.5 -0.5v-4.8a0.5 0.5 0 0 1 0.5 -0.5z"/>
+  </g>
+  <g transform="translate(13 0)">
+    <rect x="0" y="0" width="2.1" height="10"/>
+    <path fill-rule="evenodd" d="M1.9 0h4.6a1.9 1.9 0 0 1 1.9 1.9v1.8a1.9 1.9 0 0 1 -1.9 1.9h-4.6a1.9 1.9 0 0 1 -1.9 -1.9v-1.8a1.9 1.9 0 0 1 1.9 -1.9zM2.7 2.1h3a0.6 0.6 0 0 1 0.6 0.6v0.2a0.6 0.6 0 0 1 -0.6 0.6h-3a0.6 0.6 0 0 1 -0.6 -0.6v-0.2a0.6 0.6 0 0 1 0.6 -0.6z"/>
+    <path d="M5.4 5.1h2.6l2.2 4.9H7.6z"/>
+  </g>
+  <g transform="translate(26 0)">
+    <rect x="0" y="0" width="2.1" height="10"/>
+  </g>
+  <g transform="translate(39 0)">
+    <rect x="0" y="0" width="2.1" height="10"/>
+    <rect x="7.9" y="0" width="2.1" height="10"/>
+    <path d="M1.7 0h2.4l5.5 10H7.1z"/>
+  </g>
+  </g>
+</svg>
