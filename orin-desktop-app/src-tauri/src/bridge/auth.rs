@@ -234,6 +234,42 @@ mod tests {
 mod api_base_tests {
     use super::*;
 
+    /// `api_base` reads a process-global env var, and Rust runs tests on
+    /// parallel threads. Two tests that each set `ORIN_API_BASE` clobber each
+    /// other mid-assertion, so the suite fails nondeterministically -- it was
+    /// failing on `localhost:8787` in CI and on `127.0.0.1:4321` locally, for
+    /// the same reason. Every test that mutates the var must hold this lock for
+    /// its whole body, which is why the lock is taken by `with_api_base` rather
+    /// than by each test remembering to take it.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Sets `ORIN_API_BASE`, runs `body`, and restores the prior value.
+    ///
+    /// Split from the lock so a caller that already holds `ENV_LOCK` can assert
+    /// on the restored value without re-acquiring it. `std::sync::Mutex` is not
+    /// reentrant, so a helper that both locked and asserted deadlocked -- which
+    /// it did, for over 60 seconds, before this split.
+    fn with_api_base_locked<R>(value: &str, body: impl FnOnce() -> R) -> R {
+        let previous = std::env::var("ORIN_API_BASE").ok();
+        std::env::set_var("ORIN_API_BASE", value);
+        let result = body();
+        match previous {
+            Some(original) => std::env::set_var("ORIN_API_BASE", original),
+            None => std::env::remove_var("ORIN_API_BASE"),
+        }
+        result
+    }
+
+    /// `with_api_base_locked` under the lock. Every test that mutates the var
+    /// goes through here, which is what stops two of them interleaving.
+    fn with_api_base<R>(value: &str, body: impl FnOnce() -> R) -> R {
+        // A poisoned lock means a sibling test panicked while holding it. The
+        // env var is restored on every path out of the helper, so recovering is
+        // safe and keeps one panic from failing every other test.
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        with_api_base_locked(value, body)
+    }
+
     #[test]
     fn the_default_is_a_host_that_actually_serves_the_api() {
         assert_eq!(DEFAULT_API_BASE, "https://chat.orinai.org");
@@ -245,19 +281,19 @@ mod api_base_tests {
         // These are real Vercel projects. Naming one as the API base is the
         // mistake that produced the 404 on the sign-in screen.
         for bad in NON_API_HOSTS {
-            std::env::set_var("ORIN_API_BASE", format!("https://{bad}"));
-            assert_eq!(api_base(), DEFAULT_API_BASE, "{bad} must fall back");
+            with_api_base(&format!("https://{bad}"), || {
+                assert_eq!(api_base(), DEFAULT_API_BASE, "{bad} must fall back");
+            });
         }
-        std::env::remove_var("ORIN_API_BASE");
     }
 
     #[test]
     fn core_hosts_and_local_development_are_accepted() {
         for good in ["https://chat.orinai.org", "http://127.0.0.1:4321", "http://localhost:8787"] {
-            std::env::set_var("ORIN_API_BASE", good);
-            assert_eq!(api_base(), good.trim_end_matches('/'), "{good}");
+            with_api_base(good, || {
+                assert_eq!(api_base(), good.trim_end_matches('/'), "{good}");
+            });
         }
-        std::env::remove_var("ORIN_API_BASE");
     }
 
     #[test]
@@ -269,9 +305,26 @@ mod api_base_tests {
             "https://chat.orinai.org?x=1",      // query
             "https://chat.orinai.org#frag",     // fragment
         ] {
-            std::env::set_var("ORIN_API_BASE", bad);
-            assert_eq!(api_base(), DEFAULT_API_BASE, "{bad}");
+            with_api_base(bad, || {
+                assert_eq!(api_base(), DEFAULT_API_BASE, "{bad}");
+            });
         }
-        std::env::remove_var("ORIN_API_BASE");
+    }
+
+    #[test]
+    fn the_env_var_is_restored_so_one_test_cannot_leak_into_another() {
+        // The regression this guards is invisible without it: a test that leaves
+        // ORIN_API_BASE set changes the meaning of every test that runs after
+        // it. The lock is taken once, here, and the body uses the *_locked
+        // helper -- taking the lock again inside it would deadlock, since a
+        // std::sync::Mutex is not reentrant.
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        with_api_base_locked("https://chat.orinai.org", || {
+            assert_eq!(api_base(), "https://chat.orinai.org");
+        });
+        assert!(
+            std::env::var("ORIN_API_BASE").is_err(),
+            "with_api_base must clean up after itself"
+        );
     }
 }
