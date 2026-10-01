@@ -55,3 +55,13 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "abort"
+
+[[bench]]
+name = "bridge"
+harness = false
+
+# Benches need panic=unwind for the test harness; the release profile aborts.
+# Everything else is inherited from [profile.release], so the numbers still
+# reflect what ships.
+[profile.bench]
+panic = "unwind"

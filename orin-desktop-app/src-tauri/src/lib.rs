@@ -1,6 +1,11 @@
 // Orin Code — Tauri application entry. Command surface lives in `bridge/`;
 // see ../../docs/BRIDGE.md for the renderer contract these implement.
-mod bridge;
+//
+// `pub` so `benches/bridge.rs` can exercise the same functions the app calls
+// rather than a copy of them. Nothing outside this crate consumes the lib — the
+// binary target links it internally — so this widens visibility for the
+// benchmark and nothing else.
+pub mod bridge;
 
 pub fn run() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
