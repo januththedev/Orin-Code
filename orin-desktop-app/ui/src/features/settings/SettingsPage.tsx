@@ -480,6 +480,28 @@ export default function SettingsPage() {
   const settings = useAllSettings()
   const [sectionId, selectSection] = useLocalSection('general', SETTINGS_SECTION_KEY)
 
+  // The version row used to be a hardcoded "0.1.0" with a hardcoded
+  // "Orin AI desktop" caption, so every build reported 0.1.0 regardless of
+  // what it actually was. The bridge already knows; ask it.
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [platform, setPlatform] = useState<string | null>(null)
+  useEffect(() => {
+    let alive = true
+    bridge
+      .appInfo()
+      .then((info) => {
+        if (!alive) return
+        setAppVersion(info?.version ?? null)
+        setPlatform(info?.os ?? null)
+      })
+      .catch(() => {
+        /* A build that cannot read its own version should say so, not lie. */
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   const sections = [
     {
       id: 'general',
@@ -500,8 +522,17 @@ export default function SettingsPage() {
               <option value="computer">Computer Use</option>
             </select>
           </SettingRow>
-          <SettingRow label="Version" hint="Orin AI desktop — local-first build.">
-            <span className="setting-hint">0.1.0</span>
+          <SettingRow
+            label="Version"
+            hint={
+              platform
+                ? `Orin Code on ${platform} — local-first build.`
+                : 'Orin Code — local-first build.'
+            }
+          >
+            {/* "unknown" rather than a plausible-looking guess: a wrong
+                version in a support conversation costs more than a missing one. */}
+            <span className="setting-hint">{appVersion ?? 'unknown'}</span>
           </SettingRow>
         </div>
       ),

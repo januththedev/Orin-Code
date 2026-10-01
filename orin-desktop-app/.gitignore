@@ -27,3 +27,7 @@ src-tauri/target/
 
 updater
 updater.*.key
+
+# Visual sweep output -- regenerated on every run, never part of the source.
+visual-snapshots/
+visual-snapshots-boot-failure.png

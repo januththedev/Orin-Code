@@ -10,6 +10,7 @@
     "lint": "oxlint",
     "test": "npm run test:ui && cargo test --manifest-path src-tauri/Cargo.toml",
     "test:ui": "node --test test/*.test.mjs",
+    "visual": "node scripts/visual-sweep.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "app:dev": "tauri dev",
@@ -44,6 +45,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
+    "playwright": "^1.63.0",
     "typescript": "^5.9.0",
     "vite": "^8.2.0"
   }

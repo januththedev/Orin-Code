@@ -392,6 +392,22 @@
 .update-notes { margin: 10px 0 0; padding: 11px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel-raised); color: var(--muted); font: var(--fs-sm)/1.6 var(--font-mono); max-height: 220px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 /* integrations: connectors and MCP servers in one list */
+
+/* The page container had no rule at all, so this view had no gutters: the
+   heading sat flush against the sidebar, every card ran to the right edge of
+   the window, and the "connected" count and the per-row Test/delete controls
+   were clipped off-screen. Found by scripts/visual-sweep.mjs, which
+   screenshots every view -- the inner `.integration-*` rules below were all
+   correct, so the page looked styled until you looked at where the content
+   actually stopped. Matches `.settings-page`, the sibling layout it sits in. */
+.integrations-page {
+  height: 100%;
+  overflow: auto;
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 40px 36px 60px;
+}
+
 .integration-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
 .integration-row { display: flex; align-items: flex-start; gap: 12px; border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; background: var(--panel-raised); }
 .integration-icon { flex: none; margin-top: 2px; color: var(--muted); }
