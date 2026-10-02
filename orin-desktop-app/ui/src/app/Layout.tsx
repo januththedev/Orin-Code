@@ -24,6 +24,13 @@ import { Palette, useAppCommands } from '../components/CommandPalette'
 import { useUiStore, type ViewId } from '../stores/uiStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSettingsStore } from '../stores/settingsStore'
+import { useShortcutsStore } from '../stores/shortcutsStore'
+import {
+  SHORTCUT_COMMANDS,
+  matchesShortcutBinding,
+  isEditableShortcutTarget,
+  isShiftOnlyPrintableBinding,
+} from '../shortcuts/shortcutCommands'
 import { useAuthStore } from '../stores/authStore'
 import { SETTINGS_SECTION_KEY } from '../features/settings/SettingsPage'
 import { HistorySearch } from '../features/chat/HistorySearch'
@@ -233,34 +240,78 @@ export default function Layout() {
   const createChat = useChatsStore((state) => state.createChat)
   const searchOpen = useUiStore((state) => state.searchOpen)
   const setSearchOpen = useUiStore((state) => state.setSearchOpen)
+  const settings = useSettingsStore((state) => state)
+  const updateSettings = useSettingsStore((state) => state.update)
   const paletteOpen = useUiStore((state) => state.paletteOpen)
   const setPaletteOpen = useUiStore((state) => state.setPaletteOpen)
 
+  // Global keyboard dispatch, driven by the shortcut table rather than four
+  // hardcoded chords, so a rebind takes effect everywhere and adding a command
+  // does not mean touching this handler.
+  useEffect(() => {
+    void useShortcutsStore.getState().hydrate()
+  }, [])
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      const mod = event.ctrlKey || event.metaKey
-      if (!mod) return
-      if (event.key.toLowerCase() === 'b') {
+      // Auto-repeat is a held key, not a second command; typing in a field that
+      // composes IME must not be intercepted either.
+      if (event.repeat || event.isComposing) return
+      const target = event.target as EventTarget | null
+      const bindings = useShortcutsStore.getState().effective()
+
+      for (const entry of SHORTCUT_COMMANDS) {
+        // composer-scope commands belong to the chat input; the global
+        // dispatcher must stay out of their way entirely.
+        if ((entry.scope ?? 'global') !== 'global') continue
+        if (!entry.implemented) continue
+        const chords = bindings[entry.id] ?? []
+        const hit = chords.find((chord) => {
+          // A bare Shift+letter binding is the same physical event as typing a
+          // capital letter, so it must not fire while an editable element has
+          // focus — otherwise uppercase letters become untypable.
+          if (isEditableShortcutTarget(target) && isShiftOnlyPrintableBinding(chord)) return false
+          return matchesShortcutBinding(
+            {
+              key: event.key,
+              ctrlKey: event.ctrlKey,
+              metaKey: event.metaKey,
+              altKey: event.altKey,
+              shiftKey: event.shiftKey,
+              code: event.code,
+            },
+            chord,
+          )
+        })
+        if (!hit) continue
+
         event.preventDefault()
-        toggleSidebar()
-      }
-      if (event.key.toLowerCase() === 'n' && !event.shiftKey) {
-        event.preventDefault()
-        createChat()
-        setView('chat')
-      }
-      if (event.key.toLowerCase() === 'k') {
-        event.preventDefault()
-        setSearchOpen(!useUiStore.getState().searchOpen)
-      }
-      if (event.key.toLowerCase() === 'p' && event.shiftKey) {
-        event.preventDefault()
-        setPaletteOpen(!useUiStore.getState().paletteOpen)
+        switch (entry.id) {
+          case 'toggleSidebar':
+            toggleSidebar()
+            break
+          case 'newTask':
+            createChat()
+            setView('chat')
+            break
+          case 'openCommandCenter':
+            setPaletteOpen(!useUiStore.getState().paletteOpen)
+            break
+          case 'openSettings':
+            setView('settings')
+            break
+          case 'switchTheme':
+            updateSettings({ theme: settings.theme === 'dark' ? 'light' : 'dark' })
+            break
+          default:
+            break
+        }
+        return
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [toggleSidebar, createChat, setView, setSearchOpen, setPaletteOpen])
+  }, [toggleSidebar, createChat, setView, setPaletteOpen, settings.theme, updateSettings])
 
   const commands = useAppCommands({
     newChat: () => {
