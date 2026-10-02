@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Layout from './app/Layout'
+import { ApprovalHost } from './features/chat/ApprovalHost'
 import WelcomePage from './features/welcome/WelcomePage'
 import { bridge } from './bridge/client'
 import type { ModelInfo } from './bridge/types'
@@ -202,6 +203,7 @@ function MainApp() {
     <div className="app-root">
       <Layout />
       <PetBar />
+      <ApprovalHost />
       {stealth.length > 0 && (
         <StealthModal models={stealth} onUse={useStealth} onDismiss={() => setStealth([])} />
       )}

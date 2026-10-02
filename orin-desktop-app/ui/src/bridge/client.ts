@@ -19,6 +19,7 @@ import type {
   SearchHit,
   Hook,
   HookStatus,
+  PendingApproval,
   SubAgentConfig,
   MemoryFile,
   UpdateState,
@@ -261,6 +262,9 @@ export const bridge = {
   hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
   /** Replace the workspace hook file. Revokes trust: an edit must be re-approved. */
   hooksWrite: (hooks: Hook[]): Promise<HookStatus> => invoke('hooks_write', { hooks }),
+
+  /** Approvals currently awaiting a decision, with tool and arguments. */
+  approvalsPending: (): Promise<PendingApproval[]> => invoke('approvals_pending'),
 
   /** Sub-agent configurations, ZCode's shape. */
   subagentsList: (): Promise<SubAgentConfig[]> => invoke('subagents_list'),

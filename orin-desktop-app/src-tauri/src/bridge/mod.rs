@@ -28,10 +28,20 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PendingApproval {
     pub run_id: String,
     pub expires_at_ms: u64,
+    /// What is being approved. `request_approval` already computed these for
+    /// the event and the phone mirror and then threw them away, so the queue
+    /// could only say "it wants to change something". Without them a
+    /// permission prompt cannot show the tool or its arguments, which is the
+    /// whole point of asking.
+    pub tool: String,
+    pub title: String,
+    pub detail: String,
+    pub destructive: bool,
 }
 
 #[derive(Default)]

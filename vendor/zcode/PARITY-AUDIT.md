@@ -314,6 +314,52 @@ ZCode's sparse semantics are preserved and tested: an unset optional stays
 ABSENT rather than becoming `false` or `""`, which is what lets a later version
 add a field without clobbering user choices.
 
+## P0 — permission / elicitation dialogs (step 9a — LANDED)
+
+Ported from `packages/ui/src/v4/V4InteractionDialogs.tsx:315-380`
+(`PermissionDialog`) and `PermissionDialog.tsx:600-660`.
+
+| Surface | ZCode evidence | Orin Code | State |
+|---|---|---|---|
+| Dialog shows the tool | `:319-353` | `PermissionDialog.tsx` | Done |
+| Dialog shows the arguments | same | same | Done, **needed a core change** |
+| `1`/`2`/`3` answer directly | `PermissionDialog.tsx:622-638` | same | Done |
+| Enter submits, Escape blurs without answering | same | same | Done |
+| Response failure surfaces | `:330-333` (`responseError`) | same | Done |
+| Hosted at the app root, outside the conversation | `:315-320` | `ApprovalHost` | Done |
+| `workspaceHookReview` kind renders nothing | `:315-317` | hooks have no such flow | N/A |
+| Elicitation / `askuserquestion` / `exitplanmode` | `:366-380` | — | **Not started** |
+
+**The core had to change to make this honest.** `PendingApproval` recorded
+only a run id and an expiry, so the UI could say "it wants to change
+something" and nothing more. `request_approval` was already computing tool,
+title, detail and destructive for the event payload and the phone mirror --
+and then discarding them. Those now persist, and `approvals_pending` returns
+them. A permission prompt that cannot say what it is approving is not a
+permission prompt.
+
+`approve-always` is scoped to the run, never global. Run-bound, expiring and
+single-use is the invariant the approval system is built on; a sticky global
+approval would break it, so the option is named "Approve for this run".
+
+Escape deliberately does NOT answer. ZCode blurs on Escape
+(`PermissionDialog.tsx:622-638`) because dismissing a consent dialog is not
+consent, and a test asserts the dialog survives it with nothing recorded.
+
+The host polls rather than subscribing: the registry lives in Rust and emits
+an event when an approval is *requested*, but not while one is still
+outstanding, so there is nothing to subscribe to for "still waiting".
+
+`scripts/permission-check.mjs` is 12 browser checks. The dialog was
+functionally correct on the first run and completely unstyled -- it rendered
+as raw text in the corner, which no assertion caught. Looking at the
+screenshot is what found it, which is the point of taking one.
+
+ELICITATION IS NOT YET PORTED. ZCode's `ElicitationDialog` handles
+`askuserquestion`, `exitplanmode` and general `userInput` with a form and a
+persisted draft. Orin Code has no such surface and no agent tool that raises
+one. It is recorded here as open rather than stubbed.
+
 ## P0 — agent surface
 
 | Surface | ZCode evidence | Orin Code |

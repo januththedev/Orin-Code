@@ -1370,6 +1370,10 @@ async fn request_approval<E: Fn(serde_json::Value) + Send + Sync>(
             super::PendingApproval {
                 run_id: run_id.to_string(),
                 expires_at_ms: approval_now_ms() + APPROVAL_TIMEOUT_SECS * 1000,
+                tool: tool.to_string(),
+                title: title.clone(),
+                detail: detail.clone(),
+                destructive,
             },
         );
     } else {
@@ -1833,4 +1837,40 @@ mod tests {
         assert_eq!(tool_target("mcp_call", &json!({ "server": "gmail", "tool": "send" })), "gmail send");
         assert_eq!(label_for("mcp_call", "gmail send"), "MCP gmail send");
     }
+}
+
+/// Every approval currently awaiting a decision, with the tool and its
+/// arguments. Without this the UI cannot show what it is being asked to
+/// approve; it had only the run id and an expiry.
+#[tauri::command]
+pub fn approvals_pending(state: tauri::State<'_, super::AppState>) -> Vec<PendingView> {
+    let Ok(pending) = state.pending_approvals.lock() else {
+        return Vec::new();
+    };
+    let now = approval_now_ms();
+    pending
+        .iter()
+        .filter(|(_, entry)| entry.expires_at_ms > now)
+        .map(|(id, entry)| PendingView {
+            approval_id: id.clone(),
+            run_id: entry.run_id.clone(),
+            expires_at_ms: entry.expires_at_ms,
+            tool: entry.tool.clone(),
+            title: entry.title.clone(),
+            detail: entry.detail.clone(),
+            destructive: entry.destructive,
+        })
+        .collect()
+}
+
+#[derive(Clone, Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PendingView {
+    pub approval_id: String,
+    pub run_id: String,
+    pub expires_at_ms: u64,
+    pub tool: String,
+    pub title: String,
+    pub detail: String,
+    pub destructive: bool,
 }

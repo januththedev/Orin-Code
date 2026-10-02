@@ -1047,3 +1047,95 @@ button {
 .cc-clear { color: var(--muted-2); text-decoration: underline dotted; }
 .cc-history-block { border-top: 1px solid var(--line); padding: 4px; }
 .cc-history .cc-label { color: var(--muted); }
+
+/* ------------------------------------------------------- permission dialog */
+
+.permission-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.permission-dialog {
+  width: min(560px, calc(100vw - 48px));
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel-raised);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+
+.permission-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+  font: var(--fs-sm) var(--font-mono);
+}
+
+.permission-destructive {
+  margin-left: auto;
+  color: #f87171;
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: var(--fs-xs);
+}
+
+.permission-body { display: grid; gap: 8px; }
+.permission-title { margin: 0; color: var(--text); font-size: var(--fs-lg); }
+.permission-tool { color: var(--accent); font: var(--fs-sm) var(--font-mono); }
+
+.permission-detail {
+  margin: 0;
+  max-height: 200px;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font: var(--fs-sm)/1.6 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.permission-options { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.permission-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  color: var(--text);
+  font: var(--fs-sm) var(--font-mono);
+  cursor: pointer;
+}
+
+.permission-option:hover:not(:disabled) { border-color: var(--accent); }
+.permission-option:disabled { opacity: 0.6; cursor: not-allowed; }
+.permission-option.reject { color: #f87171; }
+
+.permission-option kbd {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 1px 5px;
+  color: var(--muted);
+  font: var(--fs-xs) var(--font-mono);
+}
+
+.permission-error { margin: 0; color: #f87171; font: var(--fs-sm) var(--font-mono); }
+.permission-hint { margin: 0; color: var(--muted-2); font: var(--fs-xs) var(--font-mono); }

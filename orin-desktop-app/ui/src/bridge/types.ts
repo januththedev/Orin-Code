@@ -315,3 +315,16 @@ export interface SubAgentConfig {
  * Reported rather than hidden, so a setting cannot imply a capability that is
  * not there. */
 export const SUBAGENT_WIRED_FIELDS = ['name', 'systemPrompt', 'modelSelection.modelId', 'background', 'color'] as const
+
+/** An approval awaiting a decision. The tool and its arguments are included
+ * because a permission prompt that cannot say what it is approving is not a
+ * permission prompt. */
+export interface PendingApproval {
+  approvalId: string
+  runId: string
+  expiresAtMs: number
+  tool: string
+  title: string
+  detail: string
+  destructive: boolean
+}
