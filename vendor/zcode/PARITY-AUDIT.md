@@ -235,6 +235,39 @@ Three real defects the checks caught while landing this:
 3. The project's own type-scale guard rejected two hardcoded pixel sizes in
    the new tree CSS. The styles moved onto `--fs-md` / `--fs-xs`.
 
+## P0 — slash commands (step 8 — LANDED)
+
+Ported from `shared/src/zcode-slash-command-help.ts:9-200` (21 builtins) and
+`ui/src/v4/slashCommands.ts:53-95` (the parser).
+
+The previous list was six **prompt templates** (`/explain`, `/debug`, …) — a
+different concept entirely. ZCode's are **agent commands** parsed before a
+prompt is sent, so `/model x` changes the session rather than becoming text.
+Replaced, not merged.
+
+| Command | Orin Code | State |
+|---|---|---|
+| `/help [command]` | answers locally, no session, no prompt | Wired |
+| `/model [list\|id]` | writes the setting the picker reads | Wired |
+| `/new` | creates the conversation, routes to chat | Wired |
+| `/mcp`, `/plugins` | route to the Integrations surface | Wired |
+| `/skill` | routes to Skills | Wired |
+| `/init`, `/resume`, `/locale` | act on existing surfaces | Wired |
+| `/mode` | — | **Unwired, on purpose** |
+| `/compact`, `/fork`, `/rewind` | — | Unwired: needs a checkpoint store |
+| `/expert`, `/dwf`, `/goal`, `/workflow` | — | Unwired: needs the CLI command center |
+| `/login`, `/logout` | — | Unwired: no Coding Plan provider store |
+
+**`/mode` is deliberately not mapped.** ZCode's modes are *permission* levels
+(`plan|build|edit|yolo`); Orin Code's `chat|cowork|agent|computer` are
+conversation styles. Mapping one onto the other would silently change what a run
+is allowed to do, so the command stays present and disabled with that stated.
+
+Unavailable commands remain **in the menu, marked**, rather than omitted: a
+missing row reads as "never ported", a disabled row says what is actually
+missing. Nine unit tests cover the set, the parser, `/help`'s local answer, and
+`/model`'s set-and-refuse behaviour.
+
 ## P0 — editor, files, git, terminal
 
 | Surface | ZCode evidence | Orin Code |

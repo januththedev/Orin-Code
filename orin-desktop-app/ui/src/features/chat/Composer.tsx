@@ -15,6 +15,9 @@ import type { MessagePart, ModelInfo } from '../../bridge/types'
 import type { ChatMode } from '../../stores/chatsStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { usePickerModels, useModelsStore } from '../../stores/modelsStore'
+import { useUiStore } from '../../stores/uiStore'
+import { useChatsStore } from '../../stores/chatsStore'
+import { SLASH_COMMANDS, parseSlash, findSlashCommand, type SlashApi } from './slashCommands'
 import { useProviderConfigStore } from '../../stores/providerConfigStore'
 import { FileChip, type ChipKind } from '../../components/FileChip'
 import { Dropdown, DropdownItem, DropdownSectionLabel } from '../../components/Dropdown'
@@ -56,14 +59,6 @@ interface Attachment {
 // Static data
 // ---------------------------------------------------------------------------
 
-const SLASH_COMMANDS: Array<{ id: string; label: string; template: string }> = [
-  { id: 'explain', label: 'Explain code', template: 'Explain what this code does:\n\n' },
-  { id: 'brainstorm', label: 'Brainstorm', template: 'Brainstorm ideas for ' },
-  { id: 'write-docs', label: 'Write documentation', template: 'Write documentation for ' },
-  { id: 'review', label: 'Review files', template: 'Review these files and suggest improvements:\n\n' },
-  { id: 'debug', label: 'Debug an error', template: 'Debug this error and propose a fix:\n\n' },
-  { id: 'build', label: 'Build an app', template: 'Build an app that ' },
-]
 
 const MODES: Array<{ id: ChatMode; label: string }> = [
   { id: 'chat', label: 'Chat' },
@@ -263,14 +258,29 @@ export function Composer({
     recordSeconds % 60,
   ).padStart(2, '0')}`
 
+  // -- slash command API ----------------------------------------------------
+  // Commands act on real state. `/model` writes the setting the picker reads,
+  // `/new` creates the conversation, `/mcp` routes to the MCP surface -- so a
+  // command is a shortcut to existing behaviour, not a parallel system.
+  const slashApi = useCallback(
+    (): SlashApi => ({
+      setView: (view) => useUiStore.getState().setView(view),
+      createChat: () => useChatsStore.getState().createChat(),
+      setModel: (modelId) => updateSettings({ defaultModelId: modelId }),
+      listModels: () => models.map((m) => ({ id: m.id, label: m.label })),
+      toast: (level, title, body) => useUiStore.getState().toast(level, title, body),
+    }),
+    [models, updateSettings],
+  )
+
   // -- suggestion menus (slash + mentions) ---------------------------------
   const slashQuery = /^\/([\w -]*)$/.exec(text.trimEnd())?.[1] ?? null
   const mentionMatch = mentionOptions?.length ? /(?:^|\s)@([\w.-]*)$/.exec(text)?.[1] : null
 
   const slashItems = useMemo(() => {
     if (slashQuery == null) return []
-    const needle = slashQuery.trim().toLowerCase()
-    return SLASH_COMMANDS.filter((cmd) => cmd.label.toLowerCase().includes(needle))
+    const needle = slashQuery.trim().toLowerCase().replace(/^\//, '')
+    return SLASH_COMMANDS.filter((cmd) => cmd.name.startsWith(needle))
   }, [slashQuery])
 
   const mentionItems = useMemo(() => {
@@ -287,14 +297,24 @@ export function Composer({
   const suggestionsActive =
     !menuDismissed && (slashItems.length > 0 || mentionItems.length > 0)
   const [activeIndex, setActiveIndex] = useState(0)
-  const activeSuggestions = slashItems.length > 0 ? slashItems.map((c) => c.label) : mentionItems
+  const activeSuggestions =
+    slashItems.length > 0
+      ? slashItems.map((c) => (c.availability === 'available' ? `/${c.name}` : `/${c.name}  (unavailable)`))
+      : mentionItems
   useEffect(() => setActiveIndex(0), [text])
 
   const pickSuggestion = (index: number) => {
     if (slashItems.length > 0) {
       const command = slashItems[index]
       if (!command) return
-      setText(command.template)
+      if (command.run && command.availability === 'available') {
+        setText('')
+        void command.run('', slashApi())
+        return
+      }
+      // Leave the name in place so arguments can be typed after it, and so an
+      // unavailable command shows its own reason rather than vanishing.
+      setText(`/${command.name} `)
     } else {
       const name = mentionItems[index]
       if (!name) return
@@ -359,6 +379,19 @@ export function Composer({
   const canSend = Boolean(text.trim()) || attachments.length > 0
 
   const submit = () => {
+    // ZCode parses a slash command BEFORE sending, so `/model x` changes the
+    // session instead of becoming a prompt. Anything the parser does not claim
+    // falls through to the prompt unchanged, which is ZCode's behaviour for an
+    // unrecognised command (`slashCommands.ts:53-95`).
+    const parsed = parseSlash(text)
+    if (parsed) {
+      const command = findSlashCommand(parsed.name)
+      if (command && command.availability === 'available' && command.run) {
+        setText('')
+        void command.run(parsed.args, slashApi())
+        return
+      }
+    }
     if (streaming || !canSend) return
     const imageParts = imagePartsOf(attachments)
     onSend(composeOutgoingText(text, attachments), imageParts.length > 0 ? { imageParts } : undefined)
@@ -438,10 +471,10 @@ export function Composer({
       {suggestionsActive && (
         <div className="composer-suggest" role="listbox">
           {(slashItems.length > 0 ? slashItems : mentionItems).map((entry, index) => {
-            const label = typeof entry === 'string' ? entry : entry.label
+            const label = typeof entry === 'string' ? entry : `/${entry.name}${entry.availability === 'available' ? '' : '  (unavailable)'}`
             return (
               <button
-                key={typeof entry === 'string' ? entry : entry.id}
+                key={typeof entry === 'string' ? entry : entry.name}
                 type="button"
                 role="option"
                 aria-selected={index === activeIndex}
