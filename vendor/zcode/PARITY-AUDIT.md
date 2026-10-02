@@ -143,12 +143,51 @@ per-provider base URL, API format (`anthropic-messages` / `openai-chat-completio
 context window, modalities, capability chips and reasoning levels. Orin Code has
 a flat provider list with a key field and a model *count* — no per-model editing.
 
+## P0 — workspace (parity step 4 — LANDED)
+
+Ported from `store/tabStore.ts` (workspace half), `root/rootWorkspaceShellTarget.ts`,
+`WorkspaceFileTree.tsx` and `WorkspaceSidebar.tsx:1664-1696`.
+
+| Surface | ZCode evidence | Orin Code | State |
+|---|---|---|---|
+| Workspace context: path, identity, purpose, availability | `tabStore.ts:26,34-44` | `stores/workspaceStore.ts` | Done |
+| Identity separating same-path/different-remote | `tabStore.ts:257-263` | `workspaceKey()` | Modelled; no remote transport yet |
+| Activating the workspace in the core | `rootWorkspaceShellTarget.ts:20-62` | `workspaceStore.open()` → `workspace_activate` | Done |
+| Expanded folders, expand-all / collapse-all | `tabStore.ts:132`, `workspaceExpansionPreference.ts` | `workspaceStore.expanded` | Done |
+| Availability when a folder disappears | `tabStore.ts:26` | re-checked on hydrate | Done |
+| Sidebar file-tree overlay | `WorkspaceSidebar.tsx:1664-1696` | `shell/WorkspaceFileTree.tsx` | Done |
+| Tree keys: Enter open, Right expand, Left collapse | `WorkspaceFileTree.tsx:560-576` | same | Done |
+| Side-pane state scoped per workspace AND task | `buildTaskSidePaneMemoryKey` | `buildSidePaneOwnerKey()` | Done |
+| Terminal cwd is the workspace | `useAppPanels.ts:1405-1407` | `termCreate(cwd)` | Done |
+| Editor tabs shared and persisted | `useTabPersistence` | `stores/editorStore.ts` | Done |
+| File create / rename / delete / move | **absent from ZCode's file service** | deliberately not added | N/A |
+| Remote workspace (SSH/WSL) | `tabStore.ts:40-42`, `SSHDialog` | not started | P0 |
+| Sidebar task modes: grouped / timeline / archived / workspace | `WorkspaceSidebar.tsx:207-221` | not started | P1 |
+
+**ZCode's file service has no create, rename, delete or move.** Its 18 methods
+are read/search plus two workspace creators, the tree's context menu is
+copy-path only, and `WorkspaceFileTree.tsx` contains zero
+`fileService.write|create|rename|delete|move` calls — the agent writes files
+through tool calls. A file manager here would be inventing a surface ZCode does
+not have, so the explorer is read-only on purpose.
+
+Three real defects the checks caught while landing this:
+
+1. `ProjectsPage.openFolder()` registered a project but never opened a
+   workspace, so the explorer showed a folder while the terminal, git and the
+   agent stayed where they launched — the split context this step removes.
+2. The IDE was crushed to a ~105px editor once the shell's rail and side pane
+   surrounded it (`250px minmax(0,1fr) 340px` inside a 695px column). The
+   centre track has a real minimum now and the side columns shrink first.
+3. The project's own type-scale guard rejected two hardcoded pixel sizes in
+   the new tree CSS. The styles moved onto `--fs-md` / `--fs-xs`.
+
 ## P0 — editor, files, git, terminal
 
 | Surface | ZCode evidence | Orin Code |
 |---|---|---|
 | Composer | **Lexical** (`LexicalChatInput.tsx`), mentions, attachments, image paste, input history `↑/↓`, `Alt+→` past mention, `⌘↵` modified submit, `⌘/Ctrl+C/V` in terminal | `<textarea>` (`Composer.tsx`), slash menu only |
-| File tree | `WorkspaceFileTree.tsx` — `Enter` open, `→` expand, `←` collapse | none |
+| File tree | `WorkspaceFileTree.tsx` — `Enter` open, `→` expand, `←` collapse | `shell/WorkspaceFileTree.tsx` (sidebar overlay) |
 | Code viewer | Shiki, light/dark theme, line numbers, wrap, font size (`codePreviewSettings.ts:10-24`) | `IdePage` w/ Monaco |
 | PDF / PPTX / image previews | `pdf-viewer.tsx:308-325`, `pptx-preview-viewer.tsx:562-576`, `image-preview-dialog.tsx:233-234` | none |
 | Git pane | `GitPane`, `GitGraph`, `GitBranchSwitcher`, `GitActionMenu.tsx:345-370` | `git_status` command only |
