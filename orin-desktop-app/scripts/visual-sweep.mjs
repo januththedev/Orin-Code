@@ -103,27 +103,47 @@ const SHIM = `
     sync_push: undefined,
     // The welcome gate. True so the sweep reaches the views behind it.
     provider_has_key: true,
+    // hasKey: true for groq and openrouter, so the store's keyed-provider path
+    // runs. This is the path that was broken: a Groq key used to be visible in
+    // Settings and absent from the picker.
     providers_list: [
-      { id: 'anthropic', label: 'Anthropic', baseUrl: 'https://api.anthropic.com', keyRequired: true, docsUrl: 'https://docs.anthropic.com', hasKey: true },
-      { id: 'openai_compat', label: 'OpenAI-compatible', baseUrl: 'https://api.openai.com/v1', keyRequired: true, docsUrl: 'https://platform.openai.com', hasKey: true },
-      { id: 'router', label: 'Orin Router', baseUrl: 'https://router.orinai.org', keyRequired: false, docsUrl: 'https://orinai.org', hasKey: true },
+      { id: 'groq', label: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', keyRequired: true, docsUrl: 'https://console.groq.com/keys', hasKey: true },
+      { id: 'deepseek', label: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', keyRequired: true, docsUrl: 'https://platform.deepseek.com/api_keys', hasKey: false },
+      { id: 'openrouter', label: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', keyRequired: true, docsUrl: 'https://openrouter.ai/settings/keys', hasKey: true },
+    ],
+    // Per-preset live catalogs, so a focused check can assert that a keyed
+    // non-OpenRouter provider really reaches the picker.
+    groq_models: [
+      { id: 'groq/llama-3.3-70b-versatile', provider: 'groq', label: 'Llama 3.3 70B (Groq)', tier: 'fast', speed: 3, intelligence: 2, contextTokens: 131072 },
+      { id: 'groq/kimi-k2-instruct', provider: 'groq', label: 'Kimi K2 (Groq)', tier: 'balanced', speed: 3, intelligence: 3, contextTokens: 131072 },
+    ],
+    openrouter_models: [
+      { id: 'openrouter/deepseek/deepseek-chat-v3-0324:free', provider: 'openrouter', label: 'DeepSeek V3 - Free', tier: 'reasoning', speed: 2, intelligence: 3, contextTokens: 163840 },
     ],
     // models_fetch and models_check_new both return ModelInfo[], not a report.
     models_list: [
+      { id: 'mock/orin-offline', provider: 'mock', label: 'Orin Offline', tier: 'balanced', speed: 3, intelligence: 1, contextTokens: 32000 },
       { id: 'claude-sonnet-5', provider: 'anthropic', label: 'Claude Sonnet 5', tier: 'balanced', speed: 88, intelligence: 94, contextTokens: 200000 },
       { id: 'claude-opus-5', provider: 'anthropic', label: 'Claude Opus 5', tier: 'max', speed: 62, intelligence: 98, contextTokens: 200000 },
       { id: 'gpt-5.5', provider: 'openai_compat', label: 'GPT-5.5', tier: 'reasoning', speed: 71, intelligence: 95, contextTokens: 400000 },
       { id: 'qwen-3-max', provider: 'router', label: 'Qwen 3 Max', tier: 'fast', speed: 96, intelligence: 81, contextTokens: 262144 },
     ],
     // Adds a model the static catalog does not have, so mergeLiveModels runs.
+    // Note: the bridge client sends the preset id, so a per-preset reply is
+    // what modelsFetch resolves to. Groq's list is deliberately distinctive so
+    // the sweep can assert it reached the picker.
     models_fetch: [
-      { id: 'deepseek-v4-flash-free', provider: 'router', label: 'DeepSeek V4 Flash', tier: 'fast', speed: 99, intelligence: 72, contextTokens: 131072 },
+      { id: 'groq/llama-3.3-70b-versatile', provider: 'groq', label: 'Llama 3.3 70B (Groq)', tier: 'fast', speed: 3, intelligence: 2, contextTokens: 131072 },
+      { id: 'groq/kimi-k2-instruct', provider: 'groq', label: 'Kimi K2 (Groq)', tier: 'balanced', speed: 3, intelligence: 3, contextTokens: 131072 },
+      { id: 'openrouter/deepseek/deepseek-chat-v3-0324:free', provider: 'openrouter', label: 'DeepSeek V3 - Free', tier: 'reasoning', speed: 2, intelligence: 3, contextTokens: 163840 },
     ],
     models_check_new: [],
     update_check: { available: false, current: '1.9.0', latest: '1.9.0', notes: '' },
+    // The sweep does not assert persistence, so a null store_get is enough
+    // here. The focused model-picker check installs a real key/value store,
+    // because "does the selection survive a reload" cannot be tested against a
+    // backend that forgets everything.
     store_get: null,
-    store_set: undefined,
-    store_delete: undefined,
     telegram_has_token: false,
     pc_link_status: { linked: false },
     pc_task_poll: { tasks: [] },

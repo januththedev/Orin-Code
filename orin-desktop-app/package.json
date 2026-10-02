@@ -11,6 +11,7 @@
     "test": "npm run test:ui && cargo test --manifest-path src-tauri/Cargo.toml",
     "test:ui": "node --test test/*.test.mjs",
     "visual": "node scripts/visual-sweep.mjs",
+    "test:model-picker": "node scripts/model-picker-check.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "app:dev": "tauri dev",

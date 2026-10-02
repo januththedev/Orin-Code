@@ -14,6 +14,7 @@ import { bridge } from '../../bridge/client'
 import type { MessagePart, ModelInfo } from '../../bridge/types'
 import type { ChatMode } from '../../stores/chatsStore'
 import { useSettingsStore } from '../../stores/settingsStore'
+import { usePickerModels, useModelsStore } from '../../stores/modelsStore'
 import { FileChip, type ChipKind } from '../../components/FileChip'
 import { Dropdown, DropdownItem, DropdownSectionLabel } from '../../components/Dropdown'
 import './Composer.css'
@@ -191,32 +192,19 @@ export function Composer({
   const defaultModelId = useSettingsStore((state) => state.defaultModelId)
   const updateSettings = useSettingsStore((state) => state.update)
 
-  const [models, setModels] = useState<ModelInfo[]>([])
+  const models = usePickerModels()
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const recordTimer = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // -- model catalog -----------------------------------------------------
-  // Static catalog first (instant, works offline), then live OpenRouter
-  // models merged in — the picker always reflects the current catalog,
-  // never a frozen list.
+  // The curated catalog first (instant, works offline), then every provider
+  // the user has a key for. This used to fetch from the literal 'openrouter'
+  // while keeping the list in component state, so a Groq or DeepSeek key was
+  // invisible here no matter what Settings said about it.
   useEffect(() => {
-    let cancelled = false
-    bridge
-      .modelsList()
-      .then((list) => {
-        if (!cancelled) setModels(list)
-        return bridge.modelsFetch('openrouter').catch(() => [] as ModelInfo[])
-      })
-      .then((live) => {
-        if (cancelled || live.length === 0) return
-        setModels((prev) => mergeLiveModels(prev, live))
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
+    void useModelsStore.getState().load()
   }, [])
 
   const activeModel = models.find((m) => m.id === defaultModelId) ?? null
@@ -609,10 +597,3 @@ function groupModels(models: ModelInfo[]): Array<[ModelInfo['provider'], ModelIn
   return Array.from(groups.entries())
 }
 
-/** Merge a live fetch into the static catalog: known ids keep their curated
- * metadata, unknown live ids are appended so new/stealth models appear. */
-function mergeLiveModels(base: ModelInfo[], live: ModelInfo[]): ModelInfo[] {
-  const seen = new Set(base.map((m) => m.id))
-  const extra = live.filter((m) => !seen.has(m.id))
-  return extra.length > 0 ? [...base, ...extra] : base
-}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { bridge } from '../../bridge/client'
 import { useAllSettings, useSettingsStore } from '../../stores/settingsStore'
+import { useModelsStore } from '../../stores/modelsStore'
 import { HooksSection } from './HooksSection'
 import { UpdatesSection } from './UpdatesSection'
 import { useAuthStore } from '../../stores/authStore'
@@ -14,9 +15,14 @@ function ModelsSection() {
   const [keys, setKeys] = useState<Record<string, string>>({})
   const [hasKey, setHasKey] = useState<Record<string, boolean>>({})
   const [savedProvider, setSavedProvider] = useState<string | null>(null)
-  const [modelCounts, setModelCounts] = useState<Record<string, number>>({})
-  const [modelErrors, setModelErrors] = useState<Record<string, string>>({})
-  const [refreshing, setRefreshing] = useState<Record<string, boolean>>({})
+  // Counts, errors and the spinner now live in the shared model store, so the
+  // list this screen fetches is the same list the composer picker reads. They
+  // used to be local state holding only `models.length`, which is how a Groq or
+  // DeepSeek key could show "24 models" here and still be absent from the
+  // picker. The display is unchanged; only where the numbers live.
+  const modelCounts = useModelsStore((s) => s.counts)
+  const modelErrors = useModelsStore((s) => s.errors)
+  const refreshing = useModelsStore((s) => s.refreshing)
   const [providers, setProviders] = useState<Array<{ id: string; label: string; docsUrl: string; keyRequired: boolean }>>([
     { id: 'anthropic', label: 'Anthropic', docsUrl: 'https://console.anthropic.com/settings/keys', keyRequired: true },
     { id: 'openai', label: 'OpenAI', docsUrl: 'https://platform.openai.com/api-keys', keyRequired: true },
@@ -67,17 +73,9 @@ function ModelsSection() {
   }
 
   const refreshModels = async (providerId: string) => {
-    setRefreshing((prev) => ({ ...prev, [providerId]: true }))
-    setModelErrors((prev) => ({ ...prev, [providerId]: '' }))
-    try {
-      const models = await bridge.modelsFetch(providerId)
-      setModelCounts((prev) => ({ ...prev, [providerId]: models.length }))
-      if (models.length === 0) setModelErrors((prev) => ({ ...prev, [providerId]: 'No models returned.' }))
-    } catch (error) {
-      setModelErrors((prev) => ({ ...prev, [providerId]: String(error) }))
-    } finally {
-      setRefreshing((prev) => ({ ...prev, [providerId]: false }))
-    }
+    // The store keeps the list, not just the count, so these models appear in
+    // the composer picker. Errors and the spinner are already in the store.
+    await useModelsStore.getState().refreshProvider(providerId)
   }
 
   return (
