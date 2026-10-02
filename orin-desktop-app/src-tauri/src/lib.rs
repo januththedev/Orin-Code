@@ -84,6 +84,7 @@ pub fn run() {
             bridge::hooks::hooks_status,
             bridge::hooks::hooks_trust,
             bridge::hooks::hooks_revoke,
+            bridge::hooks::hooks_write,
             bridge::fs::fs_read_file,
             bridge::fs::fs_write_file,
             bridge::fs::fs_exists,

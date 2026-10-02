@@ -476,6 +476,40 @@ pub fn hooks_revoke(state: tauri::State<'_, super::AppState>) -> Result<bool, St
     revoke(&root)
 }
 
+/// Replace the workspace's hook file.
+///
+/// ZCode authors hooks by editing its config file
+/// (`services/src/hooks/hooksService.ts`), so a settings screen that could only
+/// *list* hooks would be a dead surface. This writes the same manifest the
+/// reader already parses.
+///
+/// Trust is NOT carried over. It is bound to the file's content digest on
+/// purpose, so any edit must put the file back in front of the user -- an
+/// edit is exactly the thing the user is being asked to approve. Revoking here
+/// is what makes that true; trusting on write would let a model-authored
+/// mutation approve itself.
+#[tauri::command]
+pub fn hooks_write(
+    hooks: Vec<Hook>,
+    state: tauri::State<'_, super::AppState>,
+) -> Result<HookStatus, String> {
+    let root = state
+        .workspace_root
+        .lock()
+        .map_err(|_| "workspace lock poisoned".to_string())?
+        .clone()
+        .ok_or_else(|| "No workspace folder is active.".to_string())?;
+    let manifest = HookManifest { hooks };
+    let body = serde_json::to_string_pretty(&manifest)
+        .map_err(|error| format!("Could not encode the hook file: {error}"))?;
+    std::fs::create_dir_all(root.join(".orin"))
+        .map_err(|error| format!("Could not create .orin: {error}"))?;
+    std::fs::write(root.join(HOOK_FILE), body)
+        .map_err(|error| format!("Could not write the hook file: {error}"))?;
+    revoke(&root)?;
+    Ok(status(&root))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

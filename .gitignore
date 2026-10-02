@@ -35,3 +35,10 @@ src/vs/workbench/contrib/orin/browser/react/src2/**
 # stale build output copies
 out-build-old/
 .mimosa/
+
+# Upstream snapshots are pinned clones, recorded in vendor/external/UPSTREAM.md.
+# Their trees are reproduced with `git clone ... && git checkout <pin>`; keeping
+# 37k vendored files in this repository would bury the Orin Code history.
+vendor/external/agent-audit/
+vendor/external/agent-memory/
+vendor/external/agent-orchestration/
