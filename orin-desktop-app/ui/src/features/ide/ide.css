@@ -2,10 +2,20 @@
 .ide-page {
   height: 100%;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr) 340px;
+  /* The centre keeps a real minimum so the editor is never crushed; the two side
+     columns are allowed to shrink below their preferred width, so they give
+     way first when the IDE is handed less room than it wants. */
+  grid-template-columns: minmax(0, 250px) minmax(340px, 1fr) minmax(0, 340px);
   overflow: hidden;
   background: var(--canvas);
 }
+
+/* The IDE has its own three columns and now lives inside the shell's rail and
+   side pane, so it can be handed much less width than it was designed for.
+   The centre track gets a real minimum: without one the editor is squeezed to
+   ~100px and Monaco's content spills over the panel beside it. The two side
+   columns give way first, because a cramped editor is worse than a narrow
+   panel. */
 
 .ide-pane-title {
   padding: 11px 12px 9px;

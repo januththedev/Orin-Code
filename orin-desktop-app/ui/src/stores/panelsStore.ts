@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { bridge } from '../bridge/client'
+import { useWorkspaceStore } from './workspaceStore'
 import {
   closeAll,
   closeOthers,
@@ -192,7 +193,10 @@ export const usePanelsStore = create<PanelsState>((set, get) => ({
     const existing = get().terminalSessionId
     if (existing) return existing
     try {
-      const id = await bridge.termCreate()
+      // The PTY starts in the workspace, so the terminal is inside the project
+      // the user opened rather than wherever the app happened to launch.
+      const cwd = useWorkspaceStore.getState().localWorkspacePath
+      const id = await bridge.termCreate(cwd || undefined)
       set({ terminalSessionId: id })
       return id
     } catch {

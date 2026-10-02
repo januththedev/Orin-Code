@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   PanelLeftClose,
@@ -25,7 +25,11 @@ import { useUiStore, type ViewId } from '../stores/uiStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useShortcutsStore } from '../stores/shortcutsStore'
-import { usePanelsStore, tabOwnerKey } from '../stores/panelsStore'
+import { usePanelsStore } from '../stores/panelsStore'
+import { WorkspaceFileTree, resolveWorkspacePath } from '../shell/WorkspaceFileTree'
+import { useEditorStore } from '../stores/editorStore'
+import { FolderTree } from 'lucide-react'
+import { buildSidePaneOwnerKey, useWorkspaceStore } from '../stores/workspaceStore'
 import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
 import { SidePane } from '../shell/SidePane'
 import { TerminalPanel } from '../shell/TerminalPanel'
@@ -104,6 +108,10 @@ const NAV_ITEMS: Array<{ id: ViewId; label: string; icon: typeof Home }> = [
 ]
 
 function NavRail() {
+  // The file tree opens as an overlay over the rail, so it is reachable from any
+  // view rather than only from the Code view (ZCode: WorkspaceSidebar.tsx:1664-1696).
+  const workspacePath = useWorkspaceStore((state) => state.localWorkspacePath)
+  const [treeOpen, setTreeOpen] = useState(false)
   const view = useUiStore((state) => state.view)
   const setView = useUiStore((state) => state.setView)
   const collapsed = useUiStore((state) => state.sidebarCollapsed)
@@ -207,7 +215,35 @@ function NavRail() {
         </div>
       </div>
 
+      {treeOpen && (
+        <div className="tree-overlay" role="dialog" aria-label="Workspace files">
+          <div className="tree-overlay-head">
+            <span>{workspacePath || 'No folder open'}</span>
+            <button type="button" onClick={() => setTreeOpen(false)} aria-label="Close file tree">
+              ×
+            </button>
+          </div>
+          <WorkspaceFileTree
+            onOpenFile={(_, relative) => {
+              setTreeOpen(false)
+              setView('ide')
+              // Absolute path, so the editor reads from the workspace root the
+              // tree was showing rather than from the process cwd.
+              void useEditorStore.getState().openFile(resolveWorkspacePath(workspacePath, relative), relative)
+            }}
+          />
+        </div>
+      )}
+
       <footer className="rail-footer">
+        <button
+          className="rail-footer-icon"
+          title="Workspace files"
+          onClick={() => setTreeOpen(!treeOpen)}
+          disabled={!workspacePath}
+        >
+          <FolderTree size={14} />
+        </button>
         <button className="account-chip" onClick={openAccount} title={session ? 'Account settings' : 'Sign in'}>
           <span className="account-avatar">{(session?.name?.[0] ?? 'Y').toUpperCase()}</span>
           {accountLabel}
@@ -346,6 +382,8 @@ export default function Layout() {
 
   useEffect(() => {
     void usePanelsStore.getState().hydrate()
+    void useWorkspaceStore.getState().hydrate()
+    void useEditorStore.getState().hydrate()
   }, [])
 
   // ⌘J toggles the bottom terminal panel, as in ZCode. The side pane is opened
@@ -373,7 +411,8 @@ export default function Layout() {
   // `collapsed` and is independent of whether any tab is open
   // (`App.tsx:504`). Gating it on having tabs makes the pane unreachable when
   // empty, which is how the first tab could never be opened.
-  const sidePaneOpen = !sidePaneCollapsed[tabOwnerKey(activeId, null)]
+  const workspacePath = useWorkspaceStore((s) => s.localWorkspacePath)
+  const sidePaneOpen = !sidePaneCollapsed[buildSidePaneOwnerKey(workspacePath, activeId)]
   void sidePaneTabs
 
   // Panel sizes persist per layout id, via the library's debounced hook. ZCode

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { bridge } from '../bridge/client'
+import { useWorkspaceStore } from './workspaceStore'
 
 export type KnowledgeStatus = 'ready' | 'processing'
 
@@ -33,6 +34,8 @@ interface ProjectsState {
   createProject: (name?: string) => Project
   openFromFolder: () => Promise<Project | null>
   update: (id: string, patch: Partial<Omit<Project, 'id'>>) => void
+  /** Select a project AND make it the active workspace. */
+  activate: (id: string) => void
   remove: (id: string) => void
   addKnowledge: (projectId: string, files: File[]) => void
   removeKnowledge: (projectId: string, knowledgeId: string) => void
@@ -101,6 +104,9 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
       createdAt: now(),
       updatedAt: now(),
     }
+    // No folder yet, so no workspace. ZCode's equivalent is a scratch
+    // workspace (`createScratchWorkspace`), which is a separate flow with its
+    // own purpose; a project with an empty rootPath has nothing to open.
     set((state) => ({ projects: [project, ...state.projects], activeProjectId: project.id }))
     return project
   },
@@ -122,6 +128,11 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
       updatedAt: now(),
     }
     set((state) => ({ projects: [project, ...state.projects], activeProjectId: project.id }))
+    // Registering a project is not the same as opening a workspace. Without
+    // this the explorer would show the folder while the terminal, git and the
+    // agent stayed wherever they launched -- which is exactly the split context
+    // the workspace concept exists to prevent.
+    await useWorkspaceStore.getState().open(pick.path)
     return project
   },
 
@@ -129,6 +140,19 @@ export const useProjectsStore = create<ProjectsState>((set, get) => ({
     set((state) => ({
       projects: state.projects.map((project) => (project.id === id ? touch({ ...project, ...patch }) : project)),
     }))
+  },
+
+  /**
+   * Switching project switches the workspace. Every dependent surface -- tree,
+   * terminal cwd, git root, agent sandbox, side-pane scope -- reads the
+   * workspace, so leaving it behind is what makes a project switch look like it
+   * half-happened.
+   */
+  activate: (id: string) => {
+    const project = get().projects.find((candidate) => candidate.id === id)
+    if (!project) return
+    set({ activeProjectId: id })
+    void useWorkspaceStore.getState().open(project.rootPath)
   },
 
   remove: (id) =>

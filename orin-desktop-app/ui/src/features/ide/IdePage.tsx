@@ -3,6 +3,8 @@ import Editor from '@monaco-editor/react'
 import { X } from 'lucide-react'
 import { bridge } from '../../bridge/client'
 import { useProjectsStore } from '../../stores/projectsStore'
+import { useEditorStore } from '../../stores/editorStore'
+import { useWorkspaceStore } from '../../stores/workspaceStore'
 import { useUiStore } from '../../stores/uiStore'
 import { FileExplorer } from './FileExplorer'
 import { TerminalPane } from './TerminalPane'
@@ -10,71 +12,39 @@ import { AiPanel } from './AiPanel'
 import { languageFor } from './languages'
 import './ide.css'
 
-interface OpenTab {
-  path: string
-  name: string
-  content: string
-  dirty: boolean
-  error?: string
-}
-
 export default function IdePage() {
   const projects = useProjectsStore((state) => state.projects)
   const activeProjectId = useProjectsStore((state) => state.activeProjectId)
   const toast = useUiStore((state) => state.toast)
 
+  // The workspace IS the project context. Reading a separate projects list here
+  // meant the editor, the tree, the terminal and the agent could each disagree
+  // about which folder is open -- so the root comes from the one store, and
+  // workspace_activate is the store's job, not a component's.
+  const workspacePath = useWorkspaceStore((state) => state.localWorkspacePath)
   const project = useMemo(
     () => projects.find((candidate) => candidate.id === activeProjectId) ?? null,
     [projects, activeProjectId],
   )
-  const root = project?.rootPath ?? null
+  const root = workspacePath || project?.rootPath || null
 
-  useEffect(() => {
-    if (root) bridge.workspaceActivate(root).catch(() => {})
-  }, [root])
-
-  const [tabs, setTabs] = useState<OpenTab[]>([])
-  const [activePath, setActivePath] = useState<string | null>(null)
-
-  const openFile = async (path: string, name: string) => {
-    const existing = tabs.find((tab) => tab.path === path)
-    if (existing) {
-      setActivePath(path)
-      return
-    }
-    try {
-      const content = await bridge.readFile(path)
-      const tab: OpenTab = { path, name, content, dirty: false }
-      setTabs((prev) => [...prev, tab])
-      setActivePath(path)
-    } catch (error) {
-      const tab: OpenTab = {
-        path,
-        name,
-        content: '',
-        dirty: false,
-        error: String(error).replace(/^Error:\s*/, ''),
-      }
-      setTabs((prev) => [...prev, tab])
-      setActivePath(path)
-    }
-  }
+  // Tabs live in the store so the sidebar file tree can open a file here, not
+  // just display one. See ui/src/stores/editorStore.ts.
+  const tabs = useEditorStore((s) => s.tabs)
+  const activePath = useEditorStore((s) => s.activePath)
+  const openFile = useEditorStore((s) => s.openFile)
+  const closeTab = useEditorStore((s) => s.closeTab)
+  const setActivePath = useEditorStore((s) => s.setActive)
+  const setContent = useEditorStore((s) => s.setContent)
+  const markDirty = useEditorStore((s) => s.markDirty)
 
   const activeTab = tabs.find((tab) => tab.path === activePath) ?? null
-
-  const closeTab = (path: string) => {
-    setTabs((prev) => prev.filter((tab) => tab.path !== path))
-    if (activePath === path) {
-      const remaining = tabs.filter((tab) => tab.path !== path)
-      setActivePath(remaining.at(-1)?.path ?? null)
-    }
-  }
 
   const saveActive = async () => {
     if (!activeTab || activeTab.error) return
     try {
       await bridge.writeFile(activeTab.path, activeTab.content)
-      setTabs((prev) => prev.map((tab) => (tab.path === activeTab.path ? { ...tab, dirty: false } : tab)))
+      markDirty(activeTab.path, false)
       toast('success', 'Saved', activeTab.name)
     } catch (error) {
       toast('error', 'Could not save', String(error))
@@ -149,13 +119,10 @@ export default function IdePage() {
               language={languageFor(activeTab.name)}
               theme="vs-dark"
               value={activeTab.content}
-              onChange={(value) =>
-                setTabs((prev) =>
-                  prev.map((tab) =>
-                    tab.path === activeTab.path ? { ...tab, content: value ?? '', dirty: true } : tab,
-                  ),
-                )
-              }
+              onChange={(value) => {
+                setContent(activeTab.path, value ?? '')
+                markDirty(activeTab.path, true)
+              }}
               options={{
                 fontSize: 13,
                 fontFamily: 'var(--font-mono)',

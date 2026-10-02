@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { bridge } from '../bridge/client'
-import { selectActiveProject, useProjectsStore } from '../stores/projectsStore'
+import { useWorkspaceStore } from '../stores/workspaceStore'
 import { isTabTypeAvailable, sidePaneTabLabel, type SidePaneTab } from './sidePaneTabs'
 
 /**
@@ -26,7 +26,7 @@ function Unavailable({ tab }: { tab: SidePaneTab }) {
 }
 
 function GitPane() {
-  const root = useProjectsStore(selectActiveProject)?.rootPath ?? ''
+  const root = useWorkspaceStore((s) => s.localWorkspacePath)
   const [status, setStatus] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
