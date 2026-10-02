@@ -271,6 +271,27 @@ export const RESERVED_BINDINGS: readonly string[] = [
 /** `⌘M` belongs to the macOS minimise role and cannot be taken from the renderer. */
 export const PLATFORM_RESERVED_BINDINGS: readonly string[] = ['CmdOrCtrl+m']
 
+/**
+ * Do two binding strings denote the same physical chord?
+ *
+ * Off Apple, `CmdOrCtrl` and an explicit `Ctrl` are the same key, so
+ * `Ctrl+c` and `CmdOrCtrl+c` collide. On Apple they are different keys -- Cmd
+ * versus the reserved Emacs editing chord -- and must not be treated as equal.
+ * Ported from ZCode's `conflicts.ts:63-78`, which canonicalises for the same
+ * reason.
+ */
+export function isSamePhysicalBinding(a: string, b: string): boolean {
+  const norm = (value: string) => value.toLowerCase().replace(/\s+/g, '')
+  if (norm(a) === norm(b)) return true
+  if (isAppleKeyboardPlatform()) return false
+  const primary = (value: string) => {
+    const v = norm(value)
+    return v.includes('cmdorctrl') || v.includes('ctrl')
+  }
+  const rest = (value: string) => norm(value).replace('cmdorctrl', '').replace('ctrl', '')
+  return primary(a) && primary(b) && rest(a) === rest(b)
+}
+
 export type ConflictKind = 'reserved' | 'platform-reserved' | 'duplicate' | 'scope'
 
 export interface BindingConflict {
@@ -291,11 +312,12 @@ export function findBindingConflict(
   commandId: ShortcutCommandId,
   existing: Readonly<Record<string, readonly string[]>>,
 ): BindingConflict | null {
-  const normalised = binding.toLowerCase().replace(/\s+/g, '')
-  if (RESERVED_BINDINGS.some((r) => r.toLowerCase().replace(/\s+/g, '') === normalised)) {
+  // Physical equivalence, not string equality: without it `Ctrl+c` slips past
+  // the reserved `CmdOrCtrl+c` on Windows, and the app would lose copy.
+  if (RESERVED_BINDINGS.some((r) => isSamePhysicalBinding(binding, r))) {
     return { kind: 'reserved', binding }
   }
-  if (PLATFORM_RESERVED_BINDINGS.some((r) => r.toLowerCase().replace(/\s+/g, '') === normalised)) {
+  if (PLATFORM_RESERVED_BINDINGS.some((r) => isSamePhysicalBinding(binding, r))) {
     return { kind: 'platform-reserved', binding }
   }
   for (const entry of SHORTCUT_COMMANDS) {
@@ -307,7 +329,7 @@ export function findBindingConflict(
     const entryScope = entry.scope ?? 'global'
     const ownScope = getShortcutEntry(commandId)?.scope ?? 'global'
     if (entryScope !== ownScope) continue
-    if (others.some((b) => b.toLowerCase().replace(/\s+/g, '') === normalised)) {
+    if (others.some((b) => isSamePhysicalBinding(b, binding))) {
       return { kind: 'duplicate', binding, against: entry.id }
     }
   }

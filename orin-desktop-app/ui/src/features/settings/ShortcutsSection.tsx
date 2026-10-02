@@ -4,7 +4,7 @@ import {
   HIDDEN_SHORTCUT_COMMANDS,
   findBindingConflict,
   formatShortcut,
-  isAppleKeyboardPlatform,
+  isSamePhysicalBinding,
   eventToBinding,
   type ShortcutCommandId,
 } from '../../shortcuts/shortcutCommands'
@@ -32,16 +32,6 @@ import { useShortcutsStore } from '../../stores/shortcutsStore'
  * Centre read, so a rebind here is the rebind everywhere.
  */
 
-/** Physical equivalence, mirroring ZCode's conflicts.ts:63-78. */
-function isSamePhysicalBinding(a: string, b: string): boolean {
-  if (a.toLowerCase().replace(/\s+/g, '') === b.toLowerCase().replace(/\s+/g, '')) return true
-  const isApple = isAppleKeyboardPlatform()
-  const ctrl = (s: string) => s.toLowerCase().includes('ctrl')
-  const cmdOrCtrl = (s: string) => s.toLowerCase().includes('cmdorctrl')
-  // Off Apple, `Ctrl+m` and `CmdOrCtrl+m` are the same physical chord.
-  if (isApple) return false
-  return (ctrl(a) || cmdOrCtrl(a)) && (ctrl(b) || cmdOrCtrl(b))
-}
 
 type Recording = { commandId: ShortcutCommandId } | null
 
@@ -49,7 +39,15 @@ export function ShortcutsSection() {
   const overrides = useShortcutsStore((s) => s.overrides)
   const setBinding = useShortcutsStore((s) => s.setBinding)
   const resetBinding = useShortcutsStore((s) => s.resetBinding)
-  const effective = useShortcutsStore((s) => s.effective())
+  // Select the override map -- a stable reference -- and resolve the effective
+  // bindings here. Calling `effective()` inside a selector builds a new object
+  // on every store read, so the view re-renders forever and never paints.
+  // Same trap as the Command Centre and the composer; the rule is that a
+  // zustand selector must return a stable reference.
+  const effective = useMemo(
+    () => useShortcutsStore.getState().effective(),
+    [overrides],
+  )
 
   const [query, setQuery] = useState('')
   const [keyQuery, setKeyQuery] = useState<string | null>(null)

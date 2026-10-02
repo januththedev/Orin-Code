@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  isSamePhysicalBinding,
   SHORTCUT_COMMANDS,
   getDefaultShortcutBindings,
   parseShortcutBinding,
@@ -169,6 +170,27 @@ test('rebinding refuses a chord another command already holds', () => {
   // reserved outright, so it is refused before the scope rule is reached.
   assert.equal(findBindingConflict('Enter', 'toggleSidebar', {}).kind, 'reserved')
   assert.equal(findBindingConflict('Shift+Enter', 'toggleSidebar', {}), null)
+})
+
+test('reserved chords are matched by PHYSICAL equivalence, not by string', () => {
+  // Off Apple, Ctrl+c and CmdOrCtrl+c are the same chord. Comparing the strings
+  // literally let Ctrl+c through and would have taken copy from the app.
+  assert.equal(isSamePhysicalBinding('Ctrl+c', 'CmdOrCtrl+c'), true)
+  assert.equal(isSamePhysicalBinding('ctrl+c', 'CMDORCTRL+C'), true)
+  assert.equal(isSamePhysicalBinding('Ctrl+Shift+V', 'CmdOrCtrl+Shift+V'), true)
+  assert.equal(isSamePhysicalBinding('Ctrl+c', 'Ctrl+k'), false)
+  // Different non-primary keys never collide, even off Apple.
+  assert.equal(isSamePhysicalBinding('Ctrl+Alt+B', 'Ctrl+Alt+B'), true)
+  assert.equal(isSamePhysicalBinding('Alt+B', 'Ctrl+Alt+B'), false)
+
+  // The conflict lookup itself must refuse the physical equivalent.
+  const existing = {}
+  assert.equal(findBindingConflict('Ctrl+c', 'toggleSidebar', existing)?.kind, 'reserved')
+  assert.equal(findBindingConflict('Ctrl+v', 'toggleSidebar', existing)?.kind, 'reserved')
+  assert.equal(findBindingConflict('Ctrl+a', 'toggleSidebar', existing)?.kind, 'reserved')
+  assert.equal(findBindingConflict('CmdOrCtrl+s', 'toggleSidebar', existing)?.kind, 'reserved')
+  // A chord another command already holds, reached through the equivalence.
+  assert.equal(findBindingConflict('Ctrl+,', 'toggleSidebar', {})?.against, 'openSettings')
 })
 
 test('a rebind replaces the whole default group', () => {

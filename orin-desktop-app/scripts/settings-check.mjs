@@ -73,21 +73,43 @@ const check = (name, pass, detail = '') => {
   console.log(`  ${pass ? 'ok  ' : 'FAIL'}  ${name}${detail ? `  — ${detail}` : ''}`)
 }
 
+/**
+ * Click a control that may be scrolled out of its container.
+ *
+ * The rail footer sits under `margin-top: auto` inside a flex column, so it can
+ * sit below the fold; Playwright's actionability check then refuses to click
+ * what a user can in fact scroll to. Scrolling first is the honest fix, and
+ * `force` covers a genuinely clipped target without weakening any assertion --
+ * every check below still asserts behaviour, not that a pixel was hittable.
+ */
+const clickable = async (locator) => {
+  await locator.scrollIntoViewIfNeeded()
+  await locator.click({ force: true, timeout: 10_000 })
+}
+
 const openSettings = async (section) => {
-  // The rail footer sits outside the interactive region Playwright's actionability
-  // check accepts, so dispatch the click directly.
-  await page.locator('[title="Settings"]').first().dispatchEvent('click')
-  await page.waitForSelector('.settings-page', { timeout: 10_000 })
+  if ((await page.locator('.settings-page').count()) === 0) {
+    // Navigate through the Command Centre rather than the rail footer. The
+    // footer lives under `margin-top: auto` and may be collapsed or below the
+    // fold after the sidebar toggling this run performs; the command palette
+    // is always reachable and is itself a path worth exercising.
+    await page.keyboard.press('Control+k')
+    await page.waitForSelector('.cc', { timeout: 10_000 })
+    await page.locator('.cc-input').fill('settings')
+    await page.waitForTimeout(300)
+    await page.locator('.cc-row').filter({ hasText: 'Settings' }).first().click()
+    await page.waitForSelector('.settings-page', { timeout: 10_000 })
+  }
   if (section) {
-    await page.locator('.settings-nav-item', { hasText: section }).first().click({ force: true, timeout: 10_000 })
+    await clickable(page.locator('.settings-nav-item', { hasText: section }).first())
     await page.waitForSelector('.settings-content', { timeout: 10_000 })
-    await page.waitForTimeout(400)
+    await page.waitForTimeout(450)
   }
 }
 
 try {
   await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('.new-chat-button', { timeout: 20_000 })
+  await page.waitForSelector('.rail-item, .rail-icon', { timeout: 20_000 })
 
   // ---------------------------------------------------------- shortcuts
   await openSettings('Keyboard shortcuts')
@@ -181,7 +203,16 @@ try {
 
   // Reload persistence.
   await page.reload({ waitUntil: 'domcontentloaded' })
-  await page.waitForSelector('.new-chat-button', { timeout: 20_000 })
+  try {
+    await page.waitForSelector('.rail-item, .rail-icon', { timeout: 20_000 })
+  } catch {
+    // A blank window after reload means a settings view threw on hydrate.
+    const what = await page.evaluate(() => ({ text: document.body.innerText.slice(0, 300), html: document.getElementById('root')?.innerHTML.length ?? -1 }))
+    console.log('DIAG after reload:', JSON.stringify(what))
+    console.log('DIAG errors:', errors.slice(0, 3).join(' | '))
+    check('the app boots after a reload with settings persisted', false, JSON.stringify(what).slice(0, 200))
+    throw new Error('app did not boot after reload')
+  }
   await openSettings('Models & providers')
   await page.waitForTimeout(400)
   const persisted = await page.locator('.provider-model-row').first().textContent()

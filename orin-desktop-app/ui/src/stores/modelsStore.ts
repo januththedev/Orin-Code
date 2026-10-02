@@ -67,10 +67,15 @@ export const useModelsStore = create<ModelsState>((set, get) => ({
     set((s) => ({ refreshing: { ...s.refreshing, [providerId]: true }, errors: { ...s.errors, [providerId]: '' } }))
     try {
       const live = await bridge.modelsFetch(providerId)
+      // The bridge is a runtime boundary. A live fetch that is not a list --
+      // an error envelope, a truncated response -- must not take the app down
+      // while it is merely enriching the catalog, so it is treated as empty
+      // rather than merged blindly.
+      const list = Array.isArray(live) ? live : []
       set((s) => ({
-        models: mergeLiveModels(s.models, live),
-        counts: { ...s.counts, [providerId]: live.length },
-        errors: live.length === 0 ? { ...s.errors, [providerId]: 'No models returned.' } : s.errors,
+        models: mergeLiveModels(s.models, list),
+        counts: { ...s.counts, [providerId]: list.length },
+        errors: list.length === 0 ? { ...s.errors, [providerId]: 'No models returned.' } : s.errors,
       }))
       return live.length
     } catch (error) {

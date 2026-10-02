@@ -236,6 +236,11 @@ button {
   background: var(--panel);
   border-right: 1px solid var(--line);
   min-height: 0;
+  /* The footer is pushed down with `margin-top: auto`, so once the rail's
+     content exceeds the column the account chip and the Settings control are
+     pushed past the container and clipped, and there is no way to reach them.
+     Scroll the rail instead of trapping its own controls. */
+  overflow-y: auto;
 }
 
 .navrail-collapsed {
