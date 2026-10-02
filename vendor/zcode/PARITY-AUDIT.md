@@ -80,7 +80,60 @@ the sidebar Projects `+` menu ("Open Folder" / "Connect Remote"), the
 Orin Code: no workspace concept. `fs_read_dir` / `dialog_pick_folder` exist in
 the bridge; nothing holds one open across views.
 
-## P0 — commands and shortcuts
+## P0 — commands and shortcuts (step 1 + step 2 LANDED)
+
+### Command Centre (parity step 2)
+
+Ported from `packages/ui/src/command-center/CommandCenterDialog.tsx` (1,072
+lines), `command-center/commandCenterSearchHistory.ts` and
+`quickpick/quickPickCommands.ts`.
+
+| Surface | ZCode evidence | Orin Code | State |
+|---|---|---|---|
+| Command model: id, section, title, icon, shortcut, keywords, disabled, run | `quickPickCommands.ts:37-46` | `commandCenter/quickPickCommands.ts` | Done |
+| 17 commands with ZCode's ids, sections and keywords | `quickPickCommands.ts:98-281` | same | Done |
+| `QUICK_PICK_SECTION_ORDER` and empty-section dropping | `quickPickCommands.ts:28-35` | same | Done |
+| Capability filter (`supportsTerminal`/`supportsReview`) | `quickPickCommands.ts:292-297` | same | Done |
+| `disabled` shown greyed rather than omitted | `quickPickCommands.ts:117` | same | Done |
+| switch-theme names the TARGET theme | `quickPickCommands.ts:203-208` | same | Done |
+| Scope prefixes `>` `#` `@` and the all-scope default | `CommandCenterDialog.tsx:162-180` | `search.ts` `resolveQueryScope` | Done |
+| Four scope tabs, prefix pins the tab | `:162-180`, `:694-702` | same | Done |
+| Token-substring AND matching, no fuzzy | `:182-193` | same | Done |
+| Section collapses past 3 rows behind "more results" | `:710-723` | same | Done |
+| Per-workspace history, limit 20, case-insensitive dedupe | `commandCenterSearchHistory.ts:7-107` | `search.ts` | Done |
+| Bare `>`/`#`/`@` never recorded | `:83-85` | same | Done |
+| History is a footer block, restores the scope prefix | `:1049-1060` | same | Done |
+| Invocation closes the dialog, then runs, then toasts on throw | `:621-641` | same | Done |
+| Up/Down/Enter/Escape | `:90-102` of the dialog | same | Done |
+| Live shortcut hints reflecting user rebindings | `useShortcutCommandLabel` | `bindingOf()` over the override map | Done |
+| Command palette search section (`Ctrl+K` scope) | `quickPickCommandSurface` | **not started** | P2 |
+
+Orin Code has no review surface, so `supportsReview: false` filters
+`add-review-tab` out by ZCode's own rule. `feedback`, `community` and
+`product-docs` have no platform command wired the way ZCode's do; they stay in
+the model with ZCode's ids, sections and keywords and use ZCode's `disabled`
+mechanism, so a greyed row reads as "not available here" rather than the palette
+looking broken.
+
+`scripts/command-centre-check.mjs` — 22 checks over scopes, section order, the
+capability filter, the collapse, substring-not-fuzzy matching, disabled rows,
+keyboard invocation, per-workspace history and reload persistence.
+
+Three defects it caught:
+
+1. `expandedSections` drove the render but was missing from the `rows` memo
+   dependencies, so expanding a section recomputed nothing.
+2. The "more results" row went through the command-invocation path, so
+   expanding a section closed the palette.
+3. History only rendered when the command list was empty — which never
+   happens — so it never appeared at all. ZCode renders it as a footer block.
+
+### Keyboard shortcuts (parity step 1)
+
+All 24 commands ported with ZCode's exact defaults and the modifier policy;
+see git history. `Cmd+K` and the Command Centre now dispatch from one table.
+
+## P0 — commands and shortcuts (remaining)
 
 ZCode has **four disjoint namespaces** and no shared id space. There is no
 single registry to copy; each is a separate table.

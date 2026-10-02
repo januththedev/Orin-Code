@@ -20,7 +20,7 @@ import {
 } from 'lucide-react'
 import { bridge } from '../bridge/client'
 import { OrinMark } from '../components/OrinMark'
-import { Palette, useAppCommands } from '../components/CommandPalette'
+import { CommandCentre } from '../commandCenter/CommandCentre'
 import { useUiStore, type ViewId } from '../stores/uiStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -285,6 +285,7 @@ export default function Layout() {
   const updateSettings = useSettingsStore((state) => state.update)
   const paletteOpen = useUiStore((state) => state.paletteOpen)
   const setPaletteOpen = useUiStore((state) => state.setPaletteOpen)
+  const toast = useUiStore((state) => state.toast)
 
   // Global keyboard dispatch, driven by the shortcut table rather than four
   // hardcoded chords, so a rebind takes effect everywhere and adding a command
@@ -354,18 +355,6 @@ export default function Layout() {
     return () => window.removeEventListener('keydown', onKey)
   }, [toggleSidebar, createChat, setView, setPaletteOpen, settings.theme, updateSettings])
 
-  const commands = useAppCommands({
-    newChat: () => {
-      createChat()
-      setView('chat')
-    },
-    navigate: (next) => setView(next),
-    toggleTheme: () => {
-      const settings = useSettingsStore.getState()
-      settings.update({ theme: settings.theme === 'dark' ? 'light' : 'dark' })
-    },
-    openSearch: () => setSearchOpen(true),
-  })
 
   // The IDE and Computer Use views own the whole main region (no padding).
   const fullBleed = view === 'ide' || view === 'computer'
@@ -451,7 +440,7 @@ export default function Layout() {
       </Group>
       <ToastHost />
       <HistorySearch open={searchOpen} onClose={() => setSearchOpen(false)} />
-      <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />
+      <CommandCentre open={paletteOpen} onClose={() => setPaletteOpen(false)} onError={(title, body) => toast('error', title, body)} />
     </div>
   )
 }

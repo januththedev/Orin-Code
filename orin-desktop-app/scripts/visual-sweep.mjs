@@ -240,8 +240,8 @@ const VIEWS = [
   { view: 'customize', label: 'Customize', step: { button: '.rail-item', text: 'Customize' } },
   { view: 'ide', label: 'Code', step: { button: '.rail-tab', text: 'Code' } },
   { view: 'settings', label: 'Settings', step: { title: 'Settings' } },
-  { view: 'skills', label: 'Skills', step: { palette: 'Open Skills' } },
-  { view: 'connectors', label: 'Integrations', step: { palette: 'Open Integrations' } },
+  { view: 'skills', label: 'Skills', step: { palette: 'Skills' } },
+  { view: 'connectors', label: 'Integrations', step: { palette: 'MCP Servers' } },
 ]
 
 const locate = (page, step) => {
@@ -333,13 +333,16 @@ try {
       let navigated = true
       try {
         if (view.step.palette) {
-          // Ctrl+Shift+P, per the keydown handler in app/Layout.tsx. That
-          // handler returns early unless Ctrl or Cmd is held, so a bare Shift+P
-          // opens nothing; Ctrl+K is the search palette, not this one.
+          // The command palette became the Command Centre in ZCode parity step 2,
+          // so these two views are reached through it.
           await page.keyboard.press('Control+Shift+P')
-          await page.waitForTimeout(300)
-          await page.locator('.palette-item').filter({ hasText: view.step.palette }).first().click()
-        } else {
+          await page.waitForSelector('.cc', { timeout: 10_000 })
+          await page.locator('.cc-input').fill(view.step.palette)
+          await page.waitForTimeout(250)
+          await page.locator('.cc-row').filter({ hasText: view.step.palette }).first().click()
+          await page.waitForTimeout(500)
+        }
+        else {
           const target = locate(page, view.step)
           await target.waitFor({ state: 'visible', timeout: 10_000 })
           await target.click()
