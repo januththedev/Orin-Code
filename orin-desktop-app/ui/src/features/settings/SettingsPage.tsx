@@ -3,6 +3,8 @@ import { bridge } from '../../bridge/client'
 import { useAllSettings, useSettingsStore } from '../../stores/settingsStore'
 import { useModelsStore } from '../../stores/modelsStore'
 import { HooksSection } from './HooksSection'
+import { ShortcutsSection } from './ShortcutsSection'
+import { ProviderDetailSection } from './ProviderDetailSection'
 import { UpdatesSection } from './UpdatesSection'
 import { useAuthStore } from '../../stores/authStore'
 import { SettingRow, SettingsLayout, useLocalSection, Toggle } from './SettingsLayout'
@@ -537,8 +539,8 @@ export default function SettingsPage() {
     },
     {
       id: 'models',
-      label: 'Models',
-      content: <ModelsSection />,
+      label: 'Models & providers',
+      content: <ProviderDetailSection />,
     },
     {
       id: 'notifications',
@@ -577,18 +579,7 @@ export default function SettingsPage() {
     {
       id: 'shortcuts',
       label: 'Keyboard shortcuts',
-      content: (
-        <table className="shortcut-table">
-          <tbody>
-            {SHORTCUTS.map(([label, combo]) => (
-              <tr key={label}>
-                <td>{label}</td>
-                <td>{combo}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ),
+      content: <ShortcutsSection />,
     },
     {
       id: 'updates',

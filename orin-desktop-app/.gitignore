@@ -34,3 +34,6 @@ visual-snapshots-boot-failure.png
 
 # Shell check screenshot -- regenerated on every run.
 shell-check.png
+
+# Settings check screenshot.
+orin-desktop-app/settings-check.png

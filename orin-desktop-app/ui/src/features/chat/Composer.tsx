@@ -15,6 +15,7 @@ import type { MessagePart, ModelInfo } from '../../bridge/types'
 import type { ChatMode } from '../../stores/chatsStore'
 import { useSettingsStore } from '../../stores/settingsStore'
 import { usePickerModels, useModelsStore } from '../../stores/modelsStore'
+import { useProviderConfigStore } from '../../stores/providerConfigStore'
 import { FileChip, type ChipKind } from '../../components/FileChip'
 import { Dropdown, DropdownItem, DropdownSectionLabel } from '../../components/Dropdown'
 import './Composer.css'
@@ -192,7 +193,19 @@ export function Composer({
   const defaultModelId = useSettingsStore((state) => state.defaultModelId)
   const updateSettings = useSettingsStore((state) => state.update)
 
-  const models = usePickerModels()
+  const configured = usePickerModels()
+  // A model switched off in Settings is not offered here. ZCode treats an absent
+  // `enabled` as inherit and only a stored `false` as disabled, so the built-in
+  // catalog decides when the overlay is silent.
+  //
+  // Select the overlay -- a stable reference -- and filter OUTSIDE the
+  // selector. Filtering inside builds a new array on every store read, which
+  // zustand reads as a change, and the view re-renders forever.
+  const modelOverlay = useProviderConfigStore((s) => s.overlay.models)
+  const models = useMemo(
+    () => configured.filter((m) => modelOverlay[m.id]?.enabled ?? m.id !== 'mock/orin-offline'),
+    [configured, modelOverlay],
+  )
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
