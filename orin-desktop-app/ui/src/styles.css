@@ -60,11 +60,49 @@ button {
   overflow: hidden;
 }
 
+/* The shell is ZCode's three-column layout: a sidebar inside the
+   conversation column, that column split vertically into conversation and
+   terminal, and a resizable side pane on the right. The panel group supplies
+   the sizing; this only makes each part fill its box. */
 .shell-body {
   flex: 1;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
   min-height: 0;
+  min-width: 0;
+}
+
+.conversation-column,
+.conversation-panel,
+.conversation-inner {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  height: 100%;
+}
+
+.conversation-inner {
+  flex-direction: row;
+}
+
+.side-pane-panel {
+  min-width: 0;
+  height: 100%;
+}
+
+/* The drag affordance between panels. */
+.pane-handle {
+  width: 6px;
+  flex: 0 0 6px;
+  background: transparent;
+  transition: background 0.15s ease;
+  cursor: col-resize;
+}
+
+.pane-handle:hover,
+.pane-handle[data-dragging='true'],
+.pane-handle:focus-visible {
+  background: var(--accent);
+  outline: none;
 }
 
 .main-view {
@@ -535,3 +573,230 @@ button {
   0%, 100% { opacity: 0.35; }
   50% { opacity: 1; }
 }
+
+/* ---------------------------------------------------------------- side pane */
+
+.side-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--canvas);
+  border-left: 1px solid var(--line);
+}
+
+.side-pane-strip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 40px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  position: relative;
+}
+
+/* Edge fades once the strip overflows, so it reads as scrollable. */
+.side-pane-strip::after {
+  content: '';
+  position: sticky;
+  right: 0;
+  flex: 0 0 24px;
+  height: 100%;
+  background: linear-gradient(to right, transparent, var(--canvas));
+  pointer-events: none;
+}
+
+.side-pane-tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.side-pane-tab.active {
+  border-color: var(--accent);
+  background: var(--panel-raised);
+}
+
+.side-pane-tab-label {
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: var(--fs-sm) var(--font-mono);
+  cursor: pointer;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 0;
+}
+
+.side-pane-tab.active .side-pane-tab-label { color: var(--text); }
+
+.side-pane-tab-close,
+.side-pane-add-button {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted-2);
+  cursor: pointer;
+}
+
+.side-pane-tab-close:hover,
+.side-pane-add-button:hover { background: var(--panel-raised); color: var(--text); }
+
+.side-pane-add { position: relative; flex: 0 0 auto; }
+
+.side-pane-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 30;
+  min-width: 160px;
+  padding: 4px;
+  display: grid;
+  gap: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-raised);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+
+.side-pane-menu button {
+  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: var(--fs-sm) var(--font-mono);
+  cursor: pointer;
+}
+
+.side-pane-menu button:hover { background: var(--panel); }
+.side-pane-menu-empty { padding: 6px 8px; color: var(--muted-2); font: var(--fs-sm) var(--font-mono); }
+
+.side-pane-recent {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--muted-2);
+}
+
+.side-pane-recent button {
+  border: 0;
+  background: none;
+  color: var(--muted-2);
+  font: var(--fs-sm) var(--font-mono);
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.side-pane-body { flex: 1; min-height: 0; overflow: auto; }
+
+.side-pane-launcher { padding: 16px; color: var(--muted); }
+.side-pane-launcher-items { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.side-pane-launcher-items button,
+.tab-browser-bar button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 6px 10px;
+  font: var(--fs-sm) var(--font-mono);
+  cursor: pointer;
+}
+
+.tab-unavailable,
+.tab-loading,
+.tab-error {
+  padding: 14px;
+  color: var(--muted);
+  font: var(--fs-sm)/1.6 var(--font-mono);
+}
+
+.tab-unavailable strong { color: var(--text); display: block; margin-bottom: 6px; }
+.tab-unavailable code { color: var(--accent); }
+.tab-error { color: #f87171; }
+.tab-git, .tab-bash, .tab-subagent, .tab-code, .tab-browser { padding: 12px; }
+.tab-git-branch { font: var(--fs-md) var(--font-mono); color: var(--text); margin: 0 0 6px; }
+.tab-git-note { color: var(--muted-2); font: var(--fs-sm) var(--font-mono); margin: 0; }
+.tab-code-path, .tab-code pre, .tab-browser pre {
+  font: var(--fs-sm)/1.6 var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tab-browser-bar { display: flex; gap: 6px; margin-bottom: 10px; }
+.tab-browser-bar input, .terminal-panel-input input, .tab-terminal-input input {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: var(--fs-sm) var(--font-mono);
+}
+.tab-terminal-log, .terminal-panel-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  font: var(--fs-sm)/1.6 var(--font-mono);
+  color: var(--muted);
+}
+.tab-terminal { display: flex; flex-direction: column; height: 100%; padding: 8px; }
+.tab-terminal-hint, .terminal-panel-hint { color: var(--muted-2); }
+
+/* --------------------------------------------------------- terminal panel */
+
+.terminal-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 140px;
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.terminal-panel.collapsed { min-height: 0; }
+.terminal-panel.collapsed .terminal-panel-head { border-bottom: 0; }
+
+.terminal-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--line);
+}
+
+.terminal-panel-toggle {
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: var(--fs-sm) var(--font-mono);
+  cursor: pointer;
+  padding: 0;
+}
+
+.terminal-panel-status { flex: 1; color: var(--muted-2); font: var(--fs-sm) var(--font-mono); }
+.terminal-panel-close {
+  display: grid; place-items: center; width: 18px; height: 18px;
+  border: 0; border-radius: 4px; background: none; color: var(--muted-2); cursor: pointer;
+}
+.terminal-panel-close:hover { background: var(--panel-raised); color: var(--text); }
+.terminal-panel-log { flex: 1; padding: 8px; }
+.terminal-panel-input { display: flex; padding: 0 8px 8px; }

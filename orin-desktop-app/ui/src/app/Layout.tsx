@@ -25,6 +25,10 @@ import { useUiStore, type ViewId } from '../stores/uiStore'
 import { useChatsStore } from '../stores/chatsStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import { useShortcutsStore } from '../stores/shortcutsStore'
+import { usePanelsStore, tabOwnerKey } from '../stores/panelsStore'
+import { Group, Panel, Separator, useDefaultLayout } from 'react-resizable-panels'
+import { SidePane } from '../shell/SidePane'
+import { TerminalPanel } from '../shell/TerminalPanel'
 import {
   SHORTCUT_COMMANDS,
   matchesShortcutBinding,
@@ -241,6 +245,7 @@ export default function Layout() {
   const searchOpen = useUiStore((state) => state.searchOpen)
   const setSearchOpen = useUiStore((state) => state.setSearchOpen)
   const settings = useSettingsStore((state) => state)
+  const activeId = useChatsStore((state) => state.activeId)
   const updateSettings = useSettingsStore((state) => state.update)
   const paletteOpen = useUiStore((state) => state.paletteOpen)
   const setPaletteOpen = useUiStore((state) => state.setPaletteOpen)
@@ -329,17 +334,82 @@ export default function Layout() {
   // The IDE and Computer Use views own the whole main region (no padding).
   const fullBleed = view === 'ide' || view === 'computer'
 
+  // The shell, ported from ZCode's WorkspaceShellLayout: a sidebar, a
+  // conversation column that splits vertically into conversation and terminal,
+  // and a resizable right-hand side pane. The panel ids are ZCode's own
+  // (`conversation-column`, `conversation`, `terminal`, `browser`) so a persisted
+  // layout means the same thing here as there.
+  const sidePaneCollapsed = usePanelsStore((s) => s.sidePaneCollapsed)
+  const setSidePaneCollapsed = usePanelsStore((s) => s.setSidePaneCollapsed)
+  const sidePaneTabs = usePanelsStore((s) => s.sidePane.tabs.length)
+  const setTerminalOpen = usePanelsStore((s) => s.setTerminalOpen)
+
+  useEffect(() => {
+    void usePanelsStore.getState().hydrate()
+  }, [])
+
+  // ⌘J toggles the bottom terminal panel, as in ZCode. The side pane is opened
+  // and closed through its own tab strip, so a toggle only applies once there is
+  // something to show.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.repeat || event.isComposing) return
+      const target = event.target as EventTarget | null
+      if (isEditableShortcutTarget(target)) return
+      const bindings = useShortcutsStore.getState().effective()
+      const chords = bindings.toggleTerminal ?? []
+      if (!chords.some((chord) => matchesShortcutBinding(
+        { key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey, code: event.code },
+        chord,
+      ))) return
+      event.preventDefault()
+      setTerminalOpen(!usePanelsStore.getState().terminalOpen)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [setTerminalOpen])
+
+  // ZCode's rule, not a guess: the side pane's visibility is the inverse of
+  // `collapsed` and is independent of whether any tab is open
+  // (`App.tsx:504`). Gating it on having tabs makes the pane unreachable when
+  // empty, which is how the first tab could never be opened.
+  const sidePaneOpen = !sidePaneCollapsed[tabOwnerKey(activeId, null)]
+  void sidePaneTabs
+
+  // Panel sizes persist per layout id, via the library's debounced hook. ZCode
+  // does the same rather than writing on every change: a window drag produces
+  // hundreds of layout updates a second.
+  const { defaultLayout: bodyLayout, onLayoutChange: setBodyLayout } = useDefaultLayout({ id: 'orin-body-layout' })
+  const { defaultLayout: columnLayout, onLayoutChange: setColumnLayout } = useDefaultLayout({ id: 'orin-conversation-layout' })
+
   return (
     <div className="shell">
       <TitleBar />
-      <div className="shell-body">
-        <NavRail />
-        <main className={`main-view ${fullBleed ? 'full-bleed' : ''}`}>
-          <Suspense fallback={<ViewFallback />}>
-            <CurrentView view={view} />
-          </Suspense>
-        </main>
-      </div>
+      <Group orientation="horizontal" defaultLayout={bodyLayout} onLayoutChange={setBodyLayout} className="shell-body">
+        <Panel defaultSize={sidePaneOpen ? 52 : 68} minSize="35%" id="conversation-column">
+          <Group orientation="vertical" defaultLayout={columnLayout} onLayoutChange={setColumnLayout} className="conversation-column">
+            <Panel minSize="35%" className="conversation-panel">
+              <div className="conversation-inner">
+                <NavRail />
+                <main className={`main-view ${fullBleed ? 'full-bleed' : ''}`}>
+                  <Suspense fallback={<ViewFallback />}>
+                    <CurrentView view={view} />
+                  </Suspense>
+                </main>
+              </div>
+            </Panel>
+            <TerminalPanel />
+          </Group>
+        </Panel>
+        {sidePaneOpen && (
+          <Separator className="pane-handle" aria-label="Resize side pane" />
+        )}
+        {sidePaneOpen && (
+          <Panel defaultSize={32} minSize="15%" maxSize="60%" id="browser" className="side-pane-panel">
+            <SidePane />
+          </Panel>
+        )}
+      </Group>
       <ToastHost />
       <HistorySearch open={searchOpen} onClose={() => setSearchOpen(false)} />
       <Palette open={paletteOpen} onClose={() => setPaletteOpen(false)} commands={commands} />

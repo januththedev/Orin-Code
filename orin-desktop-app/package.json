@@ -12,6 +12,7 @@
     "test:ui": "node --test test/*.test.mjs",
     "visual": "node scripts/visual-sweep.mjs",
     "test:model-picker": "node scripts/model-picker-check.mjs",
+    "test:shell": "node scripts/shell-check.mjs",
     "preview": "vite preview",
     "tauri": "tauri",
     "app:dev": "tauri dev",
@@ -33,6 +34,7 @@
     "monaco-editor": "^0.57.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-resizable-panels": "^4.14.1",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
