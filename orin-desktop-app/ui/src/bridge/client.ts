@@ -19,6 +19,7 @@ import type {
   SearchHit,
   Hook,
   HookStatus,
+  SubAgentConfig,
   MemoryFile,
   UpdateState,
   RefreshReport,
@@ -260,6 +261,11 @@ export const bridge = {
   hooksRevoke: (): Promise<boolean> => invoke('hooks_revoke'),
   /** Replace the workspace hook file. Revokes trust: an edit must be re-approved. */
   hooksWrite: (hooks: Hook[]): Promise<HookStatus> => invoke('hooks_write', { hooks }),
+
+  /** Sub-agent configurations, ZCode's shape. */
+  subagentsList: (): Promise<SubAgentConfig[]> => invoke('subagents_list'),
+  subagentsWrite: (agents: SubAgentConfig[]): Promise<SubAgentConfig[]> =>
+    invoke('subagents_write', { agents }),
   // The always-on-top pet window. Off by default; the in-app bar toggles it.
   petToggle: (): Promise<boolean> => invoke('pet_toggle'),
   petFocus: (): Promise<void> => invoke('pet_focus'),

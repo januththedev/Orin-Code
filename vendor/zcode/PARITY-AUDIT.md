@@ -246,6 +246,41 @@ Three real defects the checks caught while landing this:
 | Git pane | `GitPane`, `GitGraph`, `GitBranchSwitcher`, `GitActionMenu.tsx:345-370` | `git_status` command only |
 | Embedded browser | `HumanBrowserView` + agent-controlled `browser-use` side pane (`workspaceSidePane.ts:6-27,100-121`) | `browser_read` command, no UI |
 
+## P0 — subagents (parity step 5d — LANDED)
+
+Ported from `shared/src/subagents-types.ts:93-108`
+(`SubAgentConfig`) and `services/src/subagents/subagentStorage.ts`.
+
+| Field | ZCode evidence | Orin Code | State |
+|---|---|---|---|
+| `name` | `subagents-types.ts` | queue task title | Wired |
+| `systemPrompt` | same | `AiSendRequest.system` | Wired |
+| `modelSelection.modelId` | same | `AiSendRequest.model_id` | Wired |
+| `background` | same | queue delegated accounting | Wired |
+| `color` | 8 named colours | task presentation | Wired |
+| `tools` | `string[]` | — | Stored, **unwired** |
+| `disallowedTools` | `string[]` | — | Stored, **unwired** |
+| `skills` | `string[]` | — | Stored, **unwired** |
+| `mcpServers` | `string[]` | — | Stored, **unwired** |
+| `injectAgentsMd` | `boolean` | — | Stored, **unwired** |
+| `permissionMode` | 4 modes | one approval-gated mode | Stored, **unwired** |
+| `maxTurns` | `u32` | no turn budget in queue | Stored, **unwired** |
+
+Storage: `.orin/subagents.json`, mirroring ZCode's per-scope config file.
+`subagents_write` refuses the WHOLE write when any entry is invalid, matching
+ZCode: a partially applied agent set is harder to reason about than a rejected
+one. A corrupt file yields an empty set rather than an error.
+
+Every ZCode field round-trips intact — a test asserts all thirteen appear in
+the serialised form, so a field cannot be dropped from the struct while the UI
+still offers it. The seven unwired fields are **named in the settings surface
+with the reason**, not hidden: a setting that silently does nothing is worse
+than one visibly not wired yet.
+
+ZCode's sparse semantics are preserved and tested: an unset optional stays
+ABSENT rather than becoming `false` or `""`, which is what lets a later version
+add a field without clobbering user choices.
+
 ## P0 — agent surface
 
 | Surface | ZCode evidence | Orin Code |

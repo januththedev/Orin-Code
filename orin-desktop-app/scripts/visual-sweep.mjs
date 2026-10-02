@@ -144,6 +144,8 @@ const SHIM = `
     // because "does the selection survive a reload" cannot be tested against a
     // backend that forgets everything.
     store_get: null,
+    // FolderPick is an object; a bare string makes pick.path undefined.
+    dialog_pick_folder: { path: 'D:/Orin_ECOSYS/Orin-Code', name: 'Orin-Code' },
     telegram_has_token: false,
     pc_link_status: { linked: false },
     pc_task_poll: { tasks: [] },

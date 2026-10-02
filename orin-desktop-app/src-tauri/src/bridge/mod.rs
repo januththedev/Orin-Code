@@ -17,6 +17,7 @@ pub mod pets;
 pub mod presets;
 pub mod queue;
 pub mod store;
+pub mod subagents;
 pub mod sync;
 pub mod telegram;
 pub mod update;

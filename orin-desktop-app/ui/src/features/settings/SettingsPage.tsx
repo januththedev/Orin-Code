@@ -5,6 +5,7 @@ import { useModelsStore } from '../../stores/modelsStore'
 import { HooksSection } from './HooksSection'
 import { ShortcutsSection } from './ShortcutsSection'
 import { ProviderDetailSection } from './ProviderDetailSection'
+import { SubagentsSection } from './SubagentsSection'
 import { UpdatesSection } from './UpdatesSection'
 import { useAuthStore } from '../../stores/authStore'
 import { SettingRow, SettingsLayout, useLocalSection, Toggle } from './SettingsLayout'
@@ -561,6 +562,11 @@ export default function SettingsPage() {
           <HooksSection />
         </div>
       ),
+    },
+    {
+      id: 'subagents',
+      label: 'Sub-agents',
+      content: <SubagentsSection />,
     },
     {
       id: 'privacy',

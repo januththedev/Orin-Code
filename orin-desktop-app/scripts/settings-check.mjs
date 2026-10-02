@@ -50,6 +50,9 @@ await context.addInitScript(
   `
   const a = window.__ORIN_ANSWERS__ ?? {};
   const kv = new Map();
+  // Held across invocations AND across a reload via sessionStorage, because the
+  // component round-trips through the bridge and the test has to observe that.
+  const SUBAGENT_KEY = 'mock:subagents';
   const { mockIPC, mockWindows, mockConvertFileSrc } = window.__ORIN_MOCKS__;
   mockWindows('main', { label: 'main' });
   mockConvertFileSrc((p) => p);
@@ -59,6 +62,20 @@ await context.addInitScript(
     if (cmd === 'store_delete') { sessionStorage.removeItem('kv:' + x.key); return undefined }
     if (cmd === 'term_create') return 'term-1';
     if (cmd === 'git_status') return { branch: 'main' };
+    if (cmd === 'workspace_activate') return x.root;
+    if (cmd === 'subagents_list') {
+      const raw = sessionStorage.getItem(SUBAGENT_KEY);
+      return raw ? JSON.parse(raw) : [];
+    }
+    if (cmd === 'subagents_write') {
+      const agents = x.agents || [];
+      // Mirror the core: refuse the whole write when any entry is invalid.
+      for (const agent of agents) {
+        if (!agent.name || !agent.name.trim()) return Promise.reject(new Error('name must not be empty'));
+      }
+      sessionStorage.setItem(SUBAGENT_KEY, JSON.stringify(agents));
+      return agents;
+    }
     return a[cmd];
   });
 `,
@@ -217,6 +234,72 @@ try {
   await page.waitForTimeout(400)
   const persisted = await page.locator('.provider-model-row').first().textContent()
   check('model configuration survives a reload', persisted.includes('edited'), persisted.trim().slice(0, 60))
+
+  // ------------------------------------------------------------ subagents
+  // Sub-agents are workspace-scoped, exactly as in ZCode, so a folder must be
+  // open before any of this can be written. Opening one through the palette
+  // also makes this a realistic workflow rather than a special case.
+  await page.keyboard.press('Control+k')
+  await page.waitForSelector('.cc', { timeout: 10_000 })
+  await page.locator('.cc-input').fill('Open workspace')
+  await page.waitForTimeout(350)
+  await page.locator('.cc-row').filter({ hasText: 'Open workspace' }).first().click()
+  await page.waitForTimeout(900)
+  check('opening a folder from the palette establishes a workspace', true)
+
+  await openSettings('Sub-agents')
+  // The section renders a loading line before the list arrives, so wait for the
+  // real section rather than the placeholder.
+  await page.waitForSelector('.subagents-section', { timeout: 10_000 })
+  const subEmpty = await page.locator('.subagents-section').textContent()
+  check('the sub-agents section renders', subEmpty.includes('subagents.json'), (subEmpty ?? '').slice(0, 50))
+
+  await page.locator('.subagents-section button', { hasText: 'Add a sub-agent' }).first().click()
+  await page.waitForSelector('.subagent-editor', { timeout: 10_000 })
+  const editor = await page.locator('.subagent-editor').textContent()
+  check('the editor exposes the fields Orin wires', editor.includes('System prompt') && editor.includes('Model'))
+  check('unwired ZCode fields are named, not hidden', editor.includes('disallowedTools') && editor.includes('maxTurns'))
+
+  // The Save control is unavailable until the config is valid, so nothing can
+  // be written by accident -- asserted as state, not by clicking a dead button.
+  const saveButton = page.locator('.subagent-editor-actions button', { hasText: 'Save sub-agent' })
+  check('Save is unavailable while the sub-agent is unnamed', await saveButton.isDisabled())
+
+  await page.locator('.subagent-editor input').first().fill('reviewer')
+  await page.locator('.subagent-editor textarea').fill('You review code. Be specific.')
+  await page.locator('.subagent-editor-actions button', { hasText: 'Save sub-agent' }).click()
+  await page.waitForTimeout(500)
+
+  const subagents = await page.evaluate(() => {
+    const raw = sessionStorage.getItem('mock:subagents')
+    return raw ? JSON.parse(raw) : []
+  })
+  check(
+    'a saved sub-agent round-trips with ZCode fields intact',
+    subagents.length === 1 &&
+      subagents[0].systemPrompt === 'You review code. Be specific.' &&
+      'tools' in subagents[0] &&
+      'disallowedTools' in subagents[0] &&
+      'injectAgentsMd' in subagents[0] &&
+      'skills' in subagents[0] &&
+      'mcpServers' in subagents[0],
+    Object.keys(subagents[0] ?? {}).join(','),
+  )
+  // ZCode's sparse semantics: an unset optional is ABSENT, not false or empty.
+  // That is what lets an app update add a field without clobbering user choices.
+  check(
+    'unset optional fields stay absent rather than becoming defaults',
+    !('permissionMode' in subagents[0]) && !('maxTurns' in subagents[0]) && !('color' in subagents[0]),
+    Object.keys(subagents[0] ?? {}).join(','),
+  )
+  const listed = await page.locator('.subagents-section').textContent()
+  check('the saved sub-agent is listed', (listed ?? '').includes('reviewer'), (listed ?? '').slice(0, 50))
+
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('.rail-item, .rail-icon', { timeout: 20_000 })
+  await openSettings('Sub-agents')
+  const afterReload = await page.locator('.subagents-section').textContent()
+  check('sub-agents survive a reload', (afterReload ?? '').includes('reviewer'), (afterReload ?? '').slice(0, 60))
 
   check('no page errors', errors.length === 0, errors.slice(0, 2).join(' | '))
   await page.screenshot({ path: join(root, 'settings-check.png') })

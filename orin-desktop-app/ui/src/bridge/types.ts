@@ -282,3 +282,36 @@ export interface PageText {
   text: string
   truncated: boolean
 }
+
+/** ZCode's sub-agent configuration
+ * (`packages/shared/src/subagents-types.ts:93-108`), field for field. */
+export interface ReasoningOption {
+  reasoningLevel?: string
+}
+
+export interface ModelSelection {
+  providerId?: string
+  modelId?: string
+  options?: ReasoningOption
+}
+
+export interface SubAgentConfig {
+  name: string
+  description: string
+  systemPrompt: string
+  color?: string
+  modelSelection?: ModelSelection
+  tools: string[]
+  disallowedTools: string[]
+  injectAgentsMd: boolean
+  skills: string[]
+  permissionMode?: string
+  maxTurns?: number
+  background: boolean
+  mcpServers: string[]
+}
+
+/** Fields the runtime acts on today, and those it stores but does not yet use.
+ * Reported rather than hidden, so a setting cannot imply a capability that is
+ * not there. */
+export const SUBAGENT_WIRED_FIELDS = ['name', 'systemPrompt', 'modelSelection.modelId', 'background', 'color'] as const
